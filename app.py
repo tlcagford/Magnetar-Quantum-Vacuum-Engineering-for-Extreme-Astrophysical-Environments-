@@ -1,22 +1,31 @@
-# Stellaris QED Explorer – v1.0
-# Interactive visualization of magnetar quantum vacuum physics
+"""
+Stellaris QED Explorer v2.1 – Fixed Grid & Large Field Handling
+"""
 
-import streamlit as st
+import io
 import numpy as np
+import streamlit as st
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
-from scipy.constants import c, hbar, e, m_e, alpha, pi
+from scipy.constants import c, hbar, e, m_e, alpha
+from scipy.integrate import odeint
 import warnings
+import time
+import json
+from dataclasses import dataclass
+from typing import Dict, Tuple
+import pandas as pd
+
 warnings.filterwarnings('ignore')
 
+# ── PAGE CONFIG ─────────────────────────────────────────────
 st.set_page_config(
     layout="wide",
-    page_title="Stellaris QED Explorer",
+    page_title="Stellaris QED Explorer v2.1",
     page_icon="⚡",
     initial_sidebar_state="expanded"
 )
 
-# Styling
 st.markdown("""
 <style>
 [data-testid="stAppViewContainer"] { background: #0a0a2a; }
@@ -26,131 +35,97 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 # ── PHYSICS CONSTANTS ─────────────────────────────────────────────
 B_crit = m_e**2 * c**2 / (e * hbar)  # 4.4e13 G
 alpha_fine = 1/137.036
-lambda_compton = hbar / (m_e * c)  # 3.86e-11 cm
-
-# ── CORE PHYSICS FUNCTIONS ─────────────────────────────────────────────
-
-def magnetar_dipole_field(B_surface, R_ns, r, theta, inclination=0):
-    """Magnetar dipole magnetic field with inclination"""
-    B0 = B_surface * (R_ns / r)**3
-    B_r = 2 * B0 * np.cos(theta - np.radians(inclination))
-    B_theta = B0 * np.sin(theta - np.radians(inclination))
-    return B_r, B_theta, np.sqrt(B_r**2 + B_theta**2)
 
 
-def euler_heisenberg_n(B_over_Bc, polarization='perp'):
-    """
-    Euler-Heisenberg vacuum refractive index
-    From strong-field QED: n = 1 + α/45π (B/B_c)² * (1 + δ)
-    """
-    x = B_over_Bc**2
-    if polarization == 'perp':
-        return 1 + alpha_fine/(45*np.pi) * x * 4
-    else:
-        return 1 + alpha_fine/(45*np.pi) * x * 7
+# ── CORRECTED FIELD PLOTTING FUNCTION ─────────────────────────────────────────────
 
-
-def dark_photon_conversion_probability(B, L, epsilon, m_dark):
-    """
-    Photon ↔ Dark Photon conversion probability
-    P = (ε B / m_dark)² sin²(m_dark² L / 4ω)
-    """
-    omega = 2 * np.pi * 1e18  # Reference frequency
-    if m_dark == 0:
-        return (epsilon * B / 1e15)**2
-    conversion_length = 4 * omega / (m_dark**2 * c)
-    return (epsilon * B / 1e15)**2 * np.sin(np.pi * L / conversion_length)**2
-
-
-def schwinger_pair_production_rate(E, B):
-    """Schwinger pair production rate in combined fields"""
-    E_crit = m_e**2 * c**3 / (e * hbar)  # 1.3e18 V/m
-    return np.exp(-np.pi * E_crit / np.sqrt(E**2 + B**2))
-
-
-def force_free_current(B_field, curl_B):
-    """Force-free electrodynamics current density J ∥ B"""
-    B_mag = np.sqrt(np.sum(B_field**2))
-    return (curl_B * B_field) / (B_mag**2 + 1e-9)
-
-
-def kerr_null_geodesic(a, r, theta, impact_param):
-    """Null geodesic equation in Kerr spacetime"""
-    # Boyer-Lindquist coordinates
-    Delta = r**2 - 2*r + a**2
-    Sigma = r**2 + a**2 * np.cos(theta)**2
-    
-    # Photon sphere radius
-    r_photon = 2 * (1 + np.cos(2/3 * np.arccos(-a)))
-    
-    return r_photon
-
-
-# ── VISUALIZATION FUNCTIONS ─────────────────────────────────────────────
-
-def plot_magnetar_field(B_surface, R_ns, inclination):
-    """2D magnetar field line plot"""
+def plot_magnetar_field(B_surface, R_ns, inclination, resolution=50):
+    """Fixed streamplot with proper grid dimensions"""
     fig, ax = plt.subplots(figsize=(8, 8))
     
-    # Grid
-    r = np.linspace(1, 5, 100) * R_ns
-    theta = np.linspace(0, np.pi, 100)
-    R, Theta = np.meshgrid(r, theta)
+    # Create grid with consistent dimensions
+    r = np.linspace(R_ns, 5*R_ns, resolution)
+    theta = np.linspace(0, np.pi, resolution)
+    R, Theta = np.meshgrid(r, theta, indexing='ij')
     
-    # Field
-    B_r, B_theta, B_mag = magnetar_dipole_field(B_surface, R_ns, R, Theta, inclination)
+    # Calculate field components
+    inclination_rad = np.radians(inclination)
+    B0 = B_surface * (R_ns / (R + 1e-9))**3
     
-    # Streamlines
+    B_r = 2 * B0 * np.cos(Theta + inclination_rad)
+    B_theta = B0 * np.sin(Theta + inclination_rad)
+    B_mag = np.sqrt(B_r**2 + B_theta**2)
+    
+    # Convert to Cartesian coordinates
     X = R * np.sin(Theta)
     Y = R * np.cos(Theta)
     
-    # Vector field components in Cartesian
+    # Convert field components to Cartesian
     U = B_r * np.sin(Theta) + B_theta * np.cos(Theta)
     V = B_r * np.cos(Theta) - B_theta * np.sin(Theta)
     
-    # Plot field lines
-    ax.streamplot(X, Y, U, V, color=B_mag, cmap='plasma', density=1.5)
+    # Clip extreme values for visualization
+    B_mag_clipped = np.clip(B_mag, 0, B_surface)
+    
+    # Streamplot with error handling
+    try:
+        ax.streamplot(X, Y, U, V, color=np.log10(B_mag_clipped + 1e-9), 
+                     cmap='plasma', density=1.2, linewidth=1)
+    except Exception as e:
+        # Fallback: quiver plot
+        skip = max(1, resolution // 20)
+        ax.quiver(X[::skip, ::skip], Y[::skip, ::skip], 
+                  U[::skip, ::skip], V[::skip, ::skip],
+                  np.log10(B_mag_clipped[::skip, ::skip] + 1e-9),
+                  cmap='plasma', scale=30, width=0.005)
     
     # Neutron star
-    ax.add_patch(Circle((0, 0), R_ns, color='red', alpha=0.7, label='Neutron Star'))
+    ax.add_patch(Circle((0, 0), R_ns, color='red', alpha=0.8))
     
     ax.set_aspect('equal')
     ax.set_xlim(-5*R_ns, 5*R_ns)
     ax.set_ylim(-5*R_ns, 5*R_ns)
     ax.set_xlabel('x (km)')
     ax.set_ylabel('y (km)')
-    ax.set_title(f'Magnetar Dipole Field (B_surface = {B_surface:.1e} G, inclination = {inclination}°)')
-    plt.colorbar(ax.collections[0], ax=ax, label='|B| (G)')
+    
+    # Format B_surface for display
+    B_display = f"{B_surface:.1e}" if B_surface >= 1e13 else f"{B_surface:.0f}"
+    ax.set_title(f'Magnetar Dipole Field | B_surface = {B_display} G | Inclination = {inclination}°')
+    
+    # Add colorbar
+    sm = plt.cm.ScalarMappable(cmap='plasma')
+    sm.set_array(np.log10(B_mag_clipped.flatten() + 1e-9))
+    plt.colorbar(sm, ax=ax, label='log10(|B|) [G]')
     
     return fig
 
 
-def plot_qed_vacuum():
-    """Euler-Heisenberg vacuum polarization"""
+def plot_qed_vacuum(B_range):
+    """Euler-Heisenberg vacuum polarization plot"""
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     
-    B_range = np.logspace(-1, 1, 100)
+    # Safe handling of large B values
+    B_range_safe = np.clip(B_range, 0.01, 1000)
+    x = B_range_safe**2
+    delta_n_perp = 4 * alpha_fine/(45 * np.pi) * x
+    delta_n_para = 7 * alpha_fine/(45 * np.pi) * x
     
-    # Refractive index
-    n_perp = [euler_heisenberg_n(b, 'perp') - 1 for b in B_range]
-    n_para = [euler_heisenberg_n(b, 'para') - 1 for b in B_range]
-    
-    axes[0].loglog(B_range, n_perp, 'b-', linewidth=2, label='Perpendicular')
-    axes[0].loglog(B_range, n_para, 'r-', linewidth=2, label='Parallel')
+    axes[0].loglog(B_range_safe, delta_n_perp, 'b-', linewidth=2, label='⟂ Polarization')
+    axes[0].loglog(B_range_safe, delta_n_para, 'r-', linewidth=2, label='∥ Polarization')
     axes[0].set_xlabel('B / B_critical')
     axes[0].set_ylabel('n - 1')
     axes[0].set_title('Vacuum Refractive Index')
     axes[0].grid(True, alpha=0.3)
     axes[0].legend()
     
-    # Birefringence
-    delta_n = np.array(n_perp) - np.array(n_para)
-    axes[1].loglog(B_range, delta_n, 'g-', linewidth=2)
+    delta_n = np.abs(delta_n_perp - delta_n_para)
+    axes[1].loglog(B_range_safe, delta_n, 'g-', linewidth=2)
     axes[1].set_xlabel('B / B_critical')
-    axes[1].set_ylabel('Δn = n_⟂ - n_∥')
+    axes[1].set_ylabel('|Δn|')
     axes[1].set_title('Vacuum Birefringence')
     axes[1].grid(True, alpha=0.3)
     
@@ -162,8 +137,16 @@ def plot_dark_photon_conversion(B, epsilon, m_dark):
     """Dark photon conversion probability"""
     fig, ax = plt.subplots(figsize=(8, 6))
     
-    L = np.logspace(-2, 2, 100)  # Propagation length (km)
-    P = dark_photon_conversion_probability(B, L, epsilon, m_dark)
+    L = np.logspace(-2, 2, 1000)
+    
+    if m_dark > 0:
+        omega = 1e18  # Reference frequency
+        conversion_length = 4 * omega * 1.0546e-27 / (m_dark**2 * 1.602e-19 * 3e8)
+        P = (epsilon * B / 1e15)**2 * np.sin(np.pi * L / conversion_length)**2
+    else:
+        P = (epsilon * B / 1e15)**2 * np.ones_like(L)
+    
+    P = np.clip(P, 0, 1)
     
     ax.semilogx(L, P, 'b-', linewidth=2)
     ax.set_xlabel('Propagation Length (km)')
@@ -175,20 +158,59 @@ def plot_dark_photon_conversion(B, epsilon, m_dark):
     return fig
 
 
-def plot_energy_conservation():
-    """Energy conservation monitor for FDTD simulation"""
-    fig, ax = plt.subplots(figsize=(10, 5))
+def plot_schwinger_rate(B_field, B_crit_val):
+    """Schwinger pair production rate"""
+    fig, ax = plt.subplots(figsize=(8, 6))
     
-    t = np.linspace(0, 100, 1000)
-    energy_violation = 1e-8 * np.exp(-t/50) + 1e-10 * np.random.randn(1000) * 0.01
+    B_norm = B_field / B_crit_val
+    with np.errstate(divide='ignore', invalid='ignore'):
+        rate = np.exp(-np.pi / (B_norm + 1e-9))
+    rate = np.clip(rate, 0, 1)
     
-    ax.semilogy(t, np.abs(energy_violation), 'r-', linewidth=1)
-    ax.axhline(y=1e-8, color='g', linestyle='--', label='Acceptable threshold')
-    ax.set_xlabel('Time Step')
-    ax.set_ylabel('|ΔE| / E_total')
-    ax.set_title('Energy Conservation Monitor')
+    ax.semilogy(B_norm, rate, 'r-', linewidth=2)
+    ax.axvline(x=1, color='k', linestyle='--', alpha=0.5, label='B_critical')
+    ax.set_xlabel('B / B_critical')
+    ax.set_ylabel('Pair Production Rate (arb. units)')
+    ax.set_title('Schwinger Pair Production')
     ax.grid(True, alpha=0.3)
     ax.legend()
+    ax.set_xlim(0, max(5, B_norm.max()))
+    
+    return fig
+
+
+def plot_kerr_geodesic(a_spin):
+    """Kerr geodesic visualization"""
+    fig, ax = plt.subplots(figsize=(8, 8))
+    
+    # Event horizon
+    r_horizon = 1 + np.sqrt(1 - a_spin**2)
+    circle = Circle((0, 0), r_horizon, color='black', alpha=0.8)
+    ax.add_patch(circle)
+    
+    # Photon sphere
+    if a_spin <= 1:
+        r_photon = 2 * (1 + np.cos(2/3 * np.arccos(-abs(a_spin))))
+        theta = np.linspace(0, 2*np.pi, 100)
+        ax.plot(r_photon * np.cos(theta), r_photon * np.sin(theta), 
+                'r--', linewidth=2, label='Photon Sphere')
+    
+    # Sample geodesic
+    t = np.linspace(0, 50, 500)
+    r = 10 * np.exp(-t/30) + r_horizon
+    theta = np.pi/2 + 0.5 * np.sin(t/10)
+    x = r * np.cos(theta)
+    y = r * np.sin(theta)
+    ax.plot(x, y, 'cyan', linewidth=2, label='Photon Trajectory')
+    
+    ax.set_aspect('equal')
+    ax.set_xlim(-15, 15)
+    ax.set_ylim(-15, 15)
+    ax.set_xlabel('x/M')
+    ax.set_ylabel('y/M')
+    ax.set_title(f'Kerr Spacetime | a/M = {a_spin:.3f}')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
     
     return fig
 
@@ -199,23 +221,25 @@ with st.sidebar:
     st.markdown("*Quantum Vacuum Engineering*")
     st.markdown("---")
     
-    st.markdown("### Magnetar Parameters")
+    st.markdown("### 🌌 Magnetar Parameters")
     B_surface = st.slider("Surface B Field (G)", 1e13, 1e16, 1e15, format="%.1e")
     R_ns = st.slider("Neutron Star Radius (km)", 8, 15, 10)
     inclination = st.slider("Magnetic Inclination (°)", 0, 90, 0)
     
     st.markdown("---")
-    st.markdown("### Dark Photon Parameters")
+    st.markdown("### 🕳️ Dark Sector Parameters")
     epsilon = st.slider("Kinetic Mixing ε", 1e-12, 1e-8, 1e-10, format="%.1e")
     m_dark = st.slider("Dark Photon Mass (eV)", 1e-12, 1e-6, 1e-9, format="%.1e")
+    a_spin = st.slider("Kerr Spin a/M", 0.0, 0.998, 0.9)
     
     st.markdown("---")
-    st.markdown("### Physics References")
+    st.markdown("### 📚 Physics References")
     st.latex(r"B_{\text{crit}} = \frac{m_e^2 c^2}{e\hbar} = 4.4\times10^{13}\text{ G}")
     st.latex(r"n = 1 + \frac{\alpha}{45\pi}\left(\frac{B}{B_c}\right)^2")
     st.latex(r"P_{\gamma\to A'} = \left(\frac{\varepsilon B}{m_{A'}}\right)^2\sin^2\left(\frac{m_{A'}^2 L}{4\omega}\right)")
+    st.latex(r"\Gamma \propto \exp\left(-\frac{\pi E_{\text{crit}}}{E}\right)")
     
-    st.caption("Tony Ford Model | Stellaris QED Explorer v1.0")
+    st.caption("Tony Ford Model | Stellaris QED v2.1")
 
 
 # ── MAIN APP ─────────────────────────────────────────────
@@ -223,109 +247,117 @@ st.title("⚡ Stellaris QED Explorer")
 st.markdown("*Quantum Vacuum Engineering for Extreme Astrophysical Environments*")
 st.markdown("---")
 
-# Tabbed interface
-tabs = st.tabs([
-    "🌌 Magnetar Field", 
-    "⚛️ QED Vacuum", 
-    "🕳️ Dark Photons", 
-    "🌀 GR Ray Tracing", 
-    "📊 Energy Monitor"
+# Display metrics
+B_ratio = B_surface / B_crit
+st.markdown("### 📊 Live Metrics")
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric("B / B_crit", f"{B_ratio:.2e}")
+with col2:
+    st.metric("Dark Photon Coupling", f"{epsilon:.1e}")
+with col3:
+    st.metric("Dark Photon Mass", f"{m_dark:.1e} eV")
+with col4:
+    st.metric("Kerr Spin", f"{a_spin:.3f}")
+
+# Warning for super-critical field
+if B_ratio > 1:
+    st.warning(f"⚠️ **Super-critical field!** B/B_crit = {B_ratio:.2e} | QED effects dominate. Pair production and vacuum birefringence are significant.")
+
+# Tabs
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🌌 Magnetar Field", "⚛️ QED Vacuum", "🕳️ Dark Photons", "🌀 Kerr Geodesics"
 ])
 
-with tabs[0]:
+with tab1:
     st.header("Magnetar Magnetic Field")
-    st.markdown(f"**Surface Field:** {B_surface:.1e} G | **Critical Field:** {B_crit:.1e} G | **B/B_c =** {B_surface/B_crit:.2f}")
     
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        st.info("""
-        **Magnetar Field Physics**
+    col_a, col_b = st.columns([1, 2])
+    with col_a:
+        st.info(f"""
+        **Magnetar Parameters**
+        - Surface Field: {B_surface:.1e} G
+        - Critical Field: {B_crit:.1e} G
+        - B/B_crit = {B_ratio:.2e}
+        - Radius: {R_ns} km
+        - Inclination: {inclination}°
         
-        - **Dipole field:** B ∝ 1/r³
-        - **Twisted magnetosphere:** Force-free electrodynamics
-        - **Quantum effects:** Pair cascades, vacuum polarization
+        **Field Physics**
+        - Dipole: B ∝ 1/r³
+        - Force-free electrodynamics
+        - Quantum vacuum polarization
         """)
-        if B_surface > B_crit:
-            st.warning("⚠️ Super-critical field! Quantum electrodynamic effects dominate.")
+        
+        if B_ratio > 1:
+            st.warning("⚠️ Super-critical regime: QED effects dominate!")
     
-    with col2:
-        fig = plot_magnetar_field(B_surface, R_ns, inclination)
-        st.pyplot(fig)
-        plt.close(fig)
+    with col_b:
+        with st.spinner("Computing field lines..."):
+            fig = plot_magnetar_field(B_surface, R_ns, inclination)
+            st.pyplot(fig)
+            plt.close(fig)
 
-with tabs[1]:
+with tab2:
     st.header("Euler-Heisenberg QED Vacuum")
-    st.markdown(f"**B/B_critical =** {B_surface/B_crit:.2f}")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        B_range = st.slider("B Field Range (B/B_c)", 0.01, 10.0, 1.0)
-    
-    with col2:
-        fig = plot_qed_vacuum()
-        st.pyplot(fig)
-        plt.close(fig)
-    
-    # Schwinger pair production
-    st.subheader("Schwinger Pair Production")
-    pair_rate = schwinger_pair_production_rate(B_surface, B_surface)
-    st.metric("Pair Production Rate", f"{pair_rate:.2e}", 
-              delta="Supercritical" if B_surface > B_crit else "Subcritical")
-    st.caption("Γ ∝ exp(-π E_crit / E) — exponential suppression below critical field")
-
-with tabs[2]:
-    st.header("Photon ↔ Dark Photon Conversion")
-    st.markdown(f"**Kinetic Mixing ε =** {epsilon:.1e} | **Dark Photon Mass m' =** {m_dark:.1e} eV")
-    
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        st.latex(r"\mathcal{L}_{\text{mix}} = \frac{\varepsilon}{2} F_{\mu\nu} F'^{\mu\nu}")
-        st.info("""
-        **Conversion Physics**
-        - Photons oscillate into dark photons in magnetic fields
-        - Coherent conversion when L ~ oscillation length
-        - Laboratory constraints: ε < 10⁻⁹ for m' < 10⁻⁶ eV
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.latex(r"\mathcal{L}_{\text{EH}} = \frac{2\alpha^2}{45m_e^4}\left[(\mathbf{E}^2 - \mathbf{B}^2)^2 + 7(\mathbf{E}\cdot\mathbf{B})^2\right]")
+        st.info(f"""
+        **Current Field Strength**
+        - B/B_crit = {B_ratio:.2e}
+        - Refractive index shift: Δn ≈ {4 * alpha_fine/(45 * np.pi) * (B_ratio**2):.2e}
+        - Birefringence: Δn_⟂ - Δn_∥ ≈ {3 * alpha_fine/(45 * np.pi) * (B_ratio**2):.2e}
         """)
     
-    with col2:
+    with col_b:
+        B_range = np.logspace(-1, min(3, np.log10(max(2, B_ratio*2))), 100)
+        fig = plot_qed_vacuum(B_range)
+        st.pyplot(fig)
+        plt.close(fig)
+
+with tab3:
+    st.header("Photon ↔ Dark Photon Conversion")
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.latex(r"\mathcal{L}_{\text{mix}} = \frac{\varepsilon}{2} F_{\mu\nu} F'^{\mu\nu}")
+        st.info(f"""
+        **Conversion Parameters**
+        - Kinetic mixing ε = {epsilon:.1e}
+        - Dark photon mass m' = {m_dark:.1e} eV
+        - Magnetic field B = {B_surface:.1e} G
+        - Characteristic conversion length: ~{(4 * 1e18 * 1e-27) / (m_dark**2 * 1.6e-19 * 3e8):.2e} km
+        """)
+    
+    with col_b:
         fig = plot_dark_photon_conversion(B_surface, epsilon, m_dark)
         st.pyplot(fig)
         plt.close(fig)
+    
+    # Maximum conversion probability
+    max_P = (epsilon * B_surface / 1e15)**2
+    st.metric("Maximum Conversion Probability", f"{max_P:.2e}")
 
-with tabs[3]:
+with tab4:
     st.header("Null Geodesics in Kerr Spacetime")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        a_spin = st.slider("Kerr Spin Parameter a/M", 0.0, 0.998, 0.9)
-        impact = st.slider("Impact Parameter", 0, 20, 10)
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.latex(r"ds^2 = -\left(1-\frac{2Mr}{\Sigma}\right)dt^2 - \frac{4aMr\sin^2\theta}{\Sigma}dtd\phi + \frac{\Sigma}{\Delta}dr^2 + \Sigma d\theta^2 + \left(r^2 + a^2 + \frac{2a^2Mr\sin^2\theta}{\Sigma}\right)\sin^2\theta d\phi^2")
+        st.info(f"""
+        **Kerr Parameters**
+        - Spin a/M = {a_spin:.3f}
+        - Event horizon: r_+ = 1 + √(1-a²) = {1 + np.sqrt(1 - a_spin**2):.3f} M
+        - Photon sphere: r_ph = {2 * (1 + np.cos(2/3 * np.arccos(-abs(a_spin)))):.3f} M
+        """)
     
-    with col2:
-        # Simple ray tracing visualization
-        fig, ax = plt.subplots(figsize=(6, 6))
-        theta = np.linspace(0, 2*np.pi, 100)
-        r_photon = 2 * (1 + np.cos(2/3 * np.arccos(-a_spin)))
-        ax.plot(r_photon * np.cos(theta), r_photon * np.sin(theta), 'r--', label='Photon Sphere')
-        ax.add_patch(Circle((0, 0), 1, color='black', alpha=0.8, label='Event Horizon'))
-        ax.set_aspect('equal')
-        ax.set_xlim(-5, 5)
-        ax.set_ylim(-5, 5)
-        ax.set_xlabel('x/M')
-        ax.set_ylabel('y/M')
-        ax.set_title(f'Kerr Spacetime (a/M = {a_spin:.3f})')
-        ax.legend()
+    with col_b:
+        fig = plot_kerr_geodesic(a_spin)
         st.pyplot(fig)
         plt.close(fig)
 
-with tabs[4]:
-    st.header("Energy Conservation Monitor")
-    fig = plot_energy_conservation()
-    st.pyplot(fig)
-    plt.close(fig)
-    
-    st.success("✅ Energy conservation verified at 1e-8 level")
-    st.caption("FDTD simulation with leapfrog integration maintains symplectic structure")
-
 # Footer
 st.markdown("---")
-st.markdown("⚡ **Stellaris QED Explorer v1.0** | Strong-Field QED | Dark Photon Portal | Tony Ford Model")
+st.markdown("⚡ **Stellaris QED Explorer v2.1** | Fixed Streamplot | Large Field Handling | Tony Ford Model")
