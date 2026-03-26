@@ -1,5 +1,5 @@
 """
-Magnetar QED Explorer v1.1 – Complete with Downloads & Plots
+Magnetar QED Explorer v2.0 – QCI-Style Annotated Side-by-Side
 Magnetar fields | Dark photons | FDM solitons | PDP entanglement
 """
 
@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from scipy.constants import c, hbar, e, m_e, alpha
 from scipy.ndimage import gaussian_filter, sobel
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -18,7 +18,7 @@ warnings.filterwarnings('ignore')
 # ── PAGE CONFIG ─────────────────────────────────────────────
 st.set_page_config(
     layout="wide",
-    page_title="Magnetar QED Explorer v1.1",
+    page_title="Magnetar QED Explorer v2.0",
     page_icon="⚡",
     initial_sidebar_state="expanded"
 )
@@ -144,20 +144,104 @@ def process_image(image, omega, fringe, brightness=1.2):
         'rgb': rgb,
         'mixing': mixing,
         'entropy': entropy,
+        'metadata': {
+            'omega': omega,
+            'fringe': fringe,
+            'mixing': mixing,
+            'entropy': entropy,
+            'brightness': brightness,
+        }
     }
 
 
-def array_to_pil(arr):
-    """Convert numpy array to PIL Image"""
-    return Image.fromarray((arr * 255).astype(np.uint8))
+def add_annotations(image_array, metadata, scale_kpc=100, title_prefix="Before"):
+    """
+    Add QCI-style annotations: scale bar, north, physics info, formulas
+    """
+    if len(image_array.shape) == 3:
+        img = (image_array * 255).astype(np.uint8)
+        img_pil = Image.fromarray(img)
+    else:
+        img_pil = Image.fromarray((image_array * 255).astype(np.uint8)).convert('RGB')
+    
+    draw = ImageDraw.Draw(img_pil)
+    
+    try:
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+        font_tiny = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
+    except:
+        font_small = ImageFont.load_default()
+        font_tiny = ImageFont.load_default()
+    
+    h, w = image_array.shape[:2]
+    
+    # Scale bar
+    scale_bar_px = 100
+    scale_bar_kpc = (scale_bar_px / w) * scale_kpc
+    bar_y = h - 40
+    draw.rectangle([20, bar_y, 20 + scale_bar_px, bar_y + 5], fill='white')
+    draw.text((20 + 30, bar_y - 18), f"{scale_bar_kpc:.0f} kpc", fill='white', font=font_tiny)
+    
+    # North indicator
+    draw.line([w - 30, 30, w - 30, 60], fill='white', width=2)
+    draw.text((w - 38, 15), "N", fill='white', font=font_small)
+    
+    # Physics info box
+    info_lines = [
+        f"Ω = {metadata['omega']:.2f} | Fringe = {metadata['fringe']}",
+        f"Mixing = {metadata['mixing']:.3f} | Entropy = {metadata['entropy']:.3f}",
+        f"λ_FDM = {scale_bar_kpc / metadata['fringe'] * 8:.1f} kpc"
+    ]
+    
+    box_width = 240
+    box_height = len(info_lines) * 22 + 10
+    draw.rectangle([10, 10, 10 + box_width, 10 + box_height], fill=(0, 0, 0, 180), outline='white')
+    
+    for i, line in enumerate(info_lines):
+        draw.text((15, 15 + i * 22), line, fill='cyan', font=font_tiny)
+    
+    # Formulas
+    formulas = [
+        r"ρ(r) ∝ [sin(kr)/kr]²",
+        r"λ = h/(m v)",
+        r"P(γ→A') = (εB/m')² sin²(m'²L/4ω)"
+    ]
+    
+    formula_y_start = h - 80
+    for i, formula in enumerate(formulas):
+        draw.text((w - 210, formula_y_start + i * 18), formula, fill='#88ff88', font=font_tiny)
+    
+    # Title overlay
+    if title_prefix == "Before":
+        title_text = "Before: Standard View\n(Public HST/JWST Data)"
+    else:
+        title_text = "After: Photon-Dark-Photon Entangled\nFDM Overlays (Tony Ford Model)"
+    
+    # Title background
+    title_bbox = draw.textbbox((0, 0), title_text, font=font_small)
+    title_width = title_bbox[2] - title_bbox[0]
+    draw.rectangle([w//2 - title_width//2 - 10, 10, w//2 + title_width//2 + 10, 50], 
+                   fill=(0, 0, 0, 180), outline='white')
+    draw.text((w//2 - title_width//2, 15), title_text, fill='white', font=font_small, align='center')
+    
+    return np.array(img_pil) / 255.0
 
 
-def save_figure_to_png(fig):
-    """Save matplotlib figure to PNG bytes"""
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', facecolor='black')
-    buf.seek(0)
-    return buf.getvalue()
+def create_annotated_side_by_side(original, processed, metadata, scale_kpc=100):
+    """Create side-by-side comparison with annotations"""
+    original_annotated = add_annotations(original, metadata, scale_kpc, "Before")
+    processed_annotated = add_annotations(processed, metadata, scale_kpc, "After")
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7), facecolor='#0a0a1a')
+    
+    ax1.imshow(original_annotated)
+    ax1.axis('off')
+    
+    ax2.imshow(processed_annotated)
+    ax2.axis('off')
+    
+    fig.tight_layout()
+    return fig
 
 
 # ── SIDEBAR ─────────────────────────────────────────────
@@ -186,6 +270,7 @@ with st.sidebar:
     omega = st.slider("Ω Entanglement", 0.1, 1.0, omega_default, 0.05)
     fringe = st.slider("Fringe Scale", 20, 120, fringe_default, 5)
     brightness = st.slider("Brightness", 0.8, 1.8, 1.2, 0.05)
+    scale_kpc = st.selectbox("Scale (kpc)", [50, 100, 150, 200, 300], index=1)
     
     st.markdown("---")
     st.markdown("### 🌌 Magnetar")
@@ -194,7 +279,7 @@ with st.sidebar:
     m_dark = st.slider("Dark Photon Mass (eV)", 1e-12, 1e-6, 1e-9, format="%.1e")
     a_spin = st.slider("Kerr Spin", 0.0, 0.998, 0.9)
     
-    st.caption("Tony Ford | Magnetar QED v1.1")
+    st.caption("Tony Ford | Magnetar QED v2.0")
 
 
 # ── MAIN APP ─────────────────────────────────────────────
@@ -227,13 +312,6 @@ if use_preload:
         img_data = generate_sample(400, pattern)
         results = process_image(img_data, omega, fringe, brightness)
         st.success(f"✅ Loaded: {selected}")
-        
-        st.markdown("### 📊 Before → After")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.image(array_to_pil(results['original']), caption=f"Before: {selected}", use_container_width=True)
-        with col2:
-            st.image(array_to_pil(results['rgb']), caption="After: PDP Entangled + FDM", use_container_width=True)
 
 elif data_source == "📤 Upload" and uploaded is not None:
     with st.spinner(f"Processing..."):
@@ -244,20 +322,34 @@ elif data_source == "📤 Upload" and uploaded is not None:
             img_data = resize(img_data, (500, 500), preserve_range=True)
         results = process_image(img_data, omega, fringe, brightness)
         st.success(f"✅ Loaded: {uploaded.name}")
-        
-        st.markdown("### 📊 Before → After")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.image(array_to_pil(results['original']), caption="Original", use_container_width=True)
-        with col2:
-            st.image(array_to_pil(results['rgb']), caption="After: PDP Entangled", use_container_width=True)
 
 else:
     st.info("📁 **Select a preloaded object or upload an image**")
 
 
-# ── PHYSICS COMPONENTS & DOWNLOADS ─────────────────────────────────────────────
+# ── DISPLAY ANNOTATED SIDE-BY-SIDE ─────────────────────────────────────────────
 if results is not None:
+    # Add metadata to results
+    results['metadata'].update({
+        'omega': omega,
+        'fringe': fringe,
+        'mixing': results['mixing'],
+        'entropy': results['entropy'],
+        'brightness': brightness,
+    })
+    
+    # Create annotated side-by-side
+    st.markdown("### 📊 Annotated Comparison")
+    comparison_fig = create_annotated_side_by_side(
+        results['original'],
+        results['rgb'],
+        results['metadata'],
+        scale_kpc
+    )
+    st.pyplot(comparison_fig)
+    plt.close(comparison_fig)
+    
+    # ── PHYSICS COMPONENTS ─────────────────────────────────────────────
     st.markdown("---")
     st.markdown("### ⚛️ Quantum Components")
     
@@ -276,11 +368,14 @@ if results is not None:
     st.markdown("---")
     st.markdown("### 💾 Download Results")
     
-    col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+    def save_fig_to_bytes(fig):
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', bbox_inches='tight', facecolor='black')
+        buf.seek(0)
+        return buf.getvalue()
     
-    # Function to save array as PNG
     def save_array_png(arr, cmap=None):
-        fig, ax = plt.subplots(figsize=(6, 6), facecolor='black')
+        fig, ax = plt.subplots(figsize=(8, 8), facecolor='black')
         if len(arr.shape) == 3:
             ax.imshow(np.clip(arr, 0, 1))
         else:
@@ -291,37 +386,19 @@ if results is not None:
         plt.close(fig)
         return buf.getvalue()
     
+    col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+    
     with col_d1:
-        st.download_button(
-            "📸 RGB Overlay",
-            save_array_png(results['rgb']),
-            "magnetar_rgb_overlay.png",
-            use_container_width=True
-        )
+        st.download_button("📸 Annotated Comparison", save_fig_to_bytes(comparison_fig), "annotated_comparison.png", use_container_width=True)
     with col_d2:
-        st.download_button(
-            "⭐ Soliton Core",
-            save_array_png(results['soliton'], 'hot'),
-            "magnetar_soliton.png",
-            use_container_width=True
-        )
+        st.download_button("⭐ Soliton Core", save_array_png(results['soliton'], 'hot'), "soliton.png", use_container_width=True)
     with col_d3:
-        st.download_button(
-            "🌊 Dark Photon",
-            save_array_png(results['wave'], 'plasma'),
-            "magnetar_dark_photon.png",
-            use_container_width=True
-        )
+        st.download_button("🌊 Dark Photon", save_array_png(results['wave'], 'plasma'), "dark_photon.png", use_container_width=True)
     with col_d4:
-        st.download_button(
-            "⚡ Entangled",
-            save_array_png(results['entangled'], 'inferno'),
-            "magnetar_entangled.png",
-            use_container_width=True
-        )
+        st.download_button("⚡ Entangled", save_array_png(results['entangled'], 'inferno'), "entangled.png", use_container_width=True)
 
 
-# ── MAGNETAR PHYSICS TABS (WITH PLOTS) ─────────────────────────────────────────────
+# ── MAGNETAR PHYSICS TABS ─────────────────────────────────────────────
 st.markdown("---")
 st.markdown("### 🔬 Magnetar Physics")
 
@@ -352,12 +429,10 @@ with tab1:
     plt.colorbar(sc, ax=ax1, fraction=0.046, label='log₁₀|B|')
     
     st.pyplot(fig1)
-    
-    # Download button for magnetar field plot
     buf1 = io.BytesIO()
     fig1.savefig(buf1, format='png', bbox_inches='tight', facecolor='black')
     buf1.seek(0)
-    st.download_button("📥 Download Magnetar Field Plot", buf1, "magnetar_field.png", use_container_width=True)
+    st.download_button("📥 Download Field Plot", buf1, "magnetar_field.png", use_container_width=True)
     plt.close(fig1)
 
 with tab2:
@@ -385,12 +460,10 @@ with tab2:
     ax2.tick_params(colors='white')
     
     st.pyplot(fig2)
-    
-    # Download button for dark photon plot
     buf2 = io.BytesIO()
     fig2.savefig(buf2, format='png', bbox_inches='tight', facecolor='black')
     buf2.seek(0)
-    st.download_button("📥 Download Dark Photon Plot", buf2, "dark_photon_conversion.png", use_container_width=True)
+    st.download_button("📥 Download Conversion Plot", buf2, "dark_photon_conversion.png", use_container_width=True)
     plt.close(fig2)
     st.caption(f"ε = {epsilon:.1e} | m' = {m_dark:.1e} eV | B = {B_surface:.1e} G")
 
@@ -423,14 +496,12 @@ with tab3:
     ax3.axis('off')
     
     st.pyplot(fig3)
-    
-    # Download button for Kerr geodesic plot
     buf3 = io.BytesIO()
     fig3.savefig(buf3, format='png', bbox_inches='tight', facecolor='black')
     buf3.seek(0)
-    st.download_button("📥 Download Kerr Geodesic Plot", buf3, "kerr_geodesic.png", use_container_width=True)
+    st.download_button("📥 Download Geodesic Plot", buf3, "kerr_geodesic.png", use_container_width=True)
     plt.close(fig3)
     st.caption(f"Event Horizon: r_+ = {r_horizon:.3f} M")
 
 st.markdown("---")
-st.markdown("⚡ **Magnetar QED Explorer v1.1** | Download Plots | Tony Ford Model")
+st.markdown("⚡ **Magnetar QED Explorer v2.0** | Annotated Side-by-Side | Tony Ford Model")
