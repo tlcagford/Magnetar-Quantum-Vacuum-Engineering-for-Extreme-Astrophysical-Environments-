@@ -1,6 +1,6 @@
 """
-Stellaris QED Explorer v10.1 – FINAL WORKING
-All images display | No placeholders
+Stellaris QED Explorer v10.2 – FINAL FIXED
+No canvas errors | Reliable display
 """
 
 import io
@@ -18,7 +18,7 @@ warnings.filterwarnings('ignore')
 # ── PAGE CONFIG ─────────────────────────────────────────────
 st.set_page_config(
     layout="wide",
-    page_title="Stellaris QED Explorer v10.1",
+    page_title="Stellaris QED Explorer v10.2",
     page_icon="⚡",
     initial_sidebar_state="expanded"
 )
@@ -155,8 +155,8 @@ def process_image(image, omega, fringe, brightness=1.2):
 
 # ── SIDEBAR ─────────────────────────────────────────────
 with st.sidebar:
-    st.title("⚡ Stellaris QED v10.1")
-    st.markdown("*Final Working*")
+    st.title("⚡ Stellaris QED v10.2")
+    st.markdown("*Final Fixed*")
     st.markdown("---")
     
     selected_example = st.selectbox(
@@ -186,7 +186,7 @@ with st.sidebar:
     m_dark = st.slider("Dark Photon Mass (eV)", 1e-12, 1e-6, 1e-9, format="%.1e")
     a_spin = st.slider("Kerr Spin a/M", 0.0, 0.998, 0.9)
     
-    st.caption("Tony Ford Model | v10.1")
+    st.caption("Tony Ford Model | v10.2")
 
 
 # ── MAIN APP ─────────────────────────────────────────────
@@ -235,13 +235,12 @@ if selected_example != "Custom Upload":
     col_before, col_after = st.columns(2)
     
     with col_before:
-        # Convert to PIL and display
         before_img = (results['original'] * 255).astype(np.uint8)
-        st.image(before_img, caption=f"Before: {selected_example}", use_container_width=True, clamp=True)
+        st.image(before_img, caption=f"Before: {selected_example}", use_container_width=True)
     
     with col_after:
         after_img = (results['rgb_overlay'] * 255).astype(np.uint8)
-        st.image(after_img, caption="After: PDP Entangled with FDM Overlays", use_container_width=True, clamp=True)
+        st.image(after_img, caption="After: PDP Entangled with FDM Overlays", use_container_width=True)
     
     # Physics components
     st.markdown("---")
@@ -251,17 +250,17 @@ if selected_example != "Custom Upload":
     
     with col_a:
         soliton_img = (results['soliton'] * 255).astype(np.uint8)
-        st.image(soliton_img, caption="FDM Soliton Core", use_container_width=True, clamp=True)
+        st.image(soliton_img, caption="FDM Soliton Core", use_container_width=True)
         st.caption(r"$\rho(r) \propto [\sin(kr)/(kr)]^2$ | Peak: " + f"{results['soliton'].max():.3f}")
     
     with col_b:
         dp_img = (results['dark_photon'] * 255).astype(np.uint8)
-        st.image(dp_img, caption="Dark Photon Field", use_container_width=True, clamp=True)
+        st.image(dp_img, caption="Dark Photon Field", use_container_width=True)
         st.caption(r"$\lambda = h/(m v)$ | Contrast: " + f"{results['dark_photon'].std():.3f}")
     
     with col_c:
         entangled_img = (results['entangled'] * 255).astype(np.uint8)
-        st.image(entangled_img, caption="PDP Entangled", use_container_width=True, clamp=True)
+        st.image(entangled_img, caption="PDP Entangled", use_container_width=True)
         st.caption("Enhanced with soliton | Mixing: " + f"{results['mixing']:.3f}")
     
     # Metrics
@@ -312,15 +311,14 @@ else:
         st.info("📁 **Upload an image or select a preloaded example**")
 
 
-# ── PHYSICS TABS (USING st.image FOR CONSISTENCY) ─────────────────────────────────────────────
+# ── PHYSICS TABS (USING SIMPLE st.pyplot) ─────────────────────────────────────────────
 st.markdown("---")
 st.markdown("### 🔬 Quantum Vacuum Physics")
 
 # Tab 1: Magnetar Field
 with st.expander("🌌 Magnetar Field", expanded=True):
-    # Create figure and convert to image
-    fig, ax = plt.subplots(figsize=(7, 6), facecolor='#0a0a1a')
-    ax.set_facecolor('#0a0a1a')
+    fig1, ax1 = plt.subplots(figsize=(8, 7), facecolor='#0a0a1a')
+    ax1.set_facecolor('#0a0a1a')
     
     r = np.linspace(1.2, 5, 40)
     theta = np.linspace(0, 2*np.pi, 40)
@@ -332,27 +330,23 @@ with st.expander("🌌 Magnetar Field", expanded=True):
     B_norm = np.log10(B_val + 1e-9)
     B_norm = (B_norm - B_norm.min()) / (B_norm.max() - B_norm.min() + 1e-9)
     
-    sc = ax.scatter(X, Y, c=B_norm, cmap='plasma', s=3, alpha=0.7)
-    ax.add_patch(Circle((0, 0), 1, color='#ff4444', alpha=0.9))
-    ax.text(0, 0, 'NS', color='white', ha='center', va='center', fontsize=12)
-    ax.set_aspect('equal')
-    ax.set_xlim(-5.5, 5.5)
-    ax.set_ylim(-5.5, 5.5)
-    ax.set_title(f'Magnetar Field | B = {B_surface:.1e} G', color='#00aaff')
-    ax.axis('off')
-    plt.colorbar(sc, ax=ax, fraction=0.046, label='log₁₀|B|')
+    sc = ax1.scatter(X, Y, c=B_norm, cmap='plasma', s=3, alpha=0.7)
+    ax1.add_patch(Circle((0, 0), 1, color='#ff4444', alpha=0.9))
+    ax1.text(0, 0, 'NS', color='white', ha='center', va='center', fontsize=12)
+    ax1.set_aspect('equal')
+    ax1.set_xlim(-5.5, 5.5)
+    ax1.set_ylim(-5.5, 5.5)
+    ax1.set_title(f'Magnetar Field | B = {B_surface:.1e} G', color='#00aaff')
+    ax1.axis('off')
+    plt.colorbar(sc, ax=ax1, fraction=0.046, label='log₁₀|B|')
     
-    # Convert to PIL and display
-    fig.canvas.draw()
-    img_data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    img_data = img_data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    st.image(img_data, use_container_width=True)
-    plt.close(fig)
+    st.pyplot(fig1)
+    plt.close(fig1)
 
 # Tab 2: Dark Photons
 with st.expander("🕳️ Dark Photons", expanded=True):
-    fig, ax = plt.subplots(figsize=(10, 5), facecolor='#0a0a1a')
-    ax.set_facecolor('#0a0a1a')
+    fig2, ax2 = plt.subplots(figsize=(10, 5), facecolor='#0a0a1a')
+    ax2.set_facecolor('#0a0a1a')
     
     L = np.logspace(-2, 2, 500)
     if m_dark <= 0:
@@ -364,58 +358,52 @@ with st.expander("🕳️ Dark Photons", expanded=True):
         P = (epsilon * B_surface / 1e15)**2 * np.sin(np.pi * L / conv_len)**2
     P = np.clip(P, 0, 1)
     
-    ax.semilogx(L, P, '#00aaff', linewidth=2.5)
-    ax.axhline(y=(epsilon * B_surface / 1e15)**2, color='#ff8888', linestyle='--', 
+    ax2.semilogx(L, P, '#00aaff', linewidth=2.5)
+    ax2.axhline(y=(epsilon * B_surface / 1e15)**2, color='#ff8888', linestyle='--', 
                label=f'Max P = {(epsilon * B_surface / 1e15)**2:.2e}')
-    ax.set_xlabel('Length (km)', color='white')
-    ax.set_ylabel('P(γ→A\')', color='white')
-    ax.set_title('Dark Photon Conversion', color='#00aaff')
-    ax.grid(True, alpha=0.3)
-    ax.legend()
-    ax.tick_params(colors='white')
+    ax2.set_xlabel('Length (km)', color='white')
+    ax2.set_ylabel('P(γ→A\')', color='white')
+    ax2.set_title('Dark Photon Conversion', color='#00aaff')
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+    ax2.tick_params(colors='white')
     
-    fig.canvas.draw()
-    img_data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    img_data = img_data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    st.image(img_data, use_container_width=True)
-    plt.close(fig)
+    st.pyplot(fig2)
+    plt.close(fig2)
     st.caption(f"ε = {epsilon:.1e}, m' = {m_dark:.1e} eV, B = {B_surface:.1e} G")
 
 # Tab 3: Kerr Geodesics
 with st.expander("🌀 Kerr Geodesics", expanded=True):
-    fig, ax = plt.subplots(figsize=(7, 6), facecolor='#0a0a1a')
-    ax.set_facecolor('#0a0a1a')
+    fig3, ax3 = plt.subplots(figsize=(8, 7), facecolor='#0a0a1a')
+    ax3.set_facecolor('#0a0a1a')
     
     r_horizon = 1 + np.sqrt(1 - a_spin**2)
     circle = Circle((0, 0), r_horizon, color='#555555', alpha=0.7)
-    ax.add_patch(circle)
-    ax.text(0, 0, 'BH', color='white', ha='center', va='center', fontsize=12)
+    ax3.add_patch(circle)
+    ax3.text(0, 0, 'BH', color='white', ha='center', va='center', fontsize=12)
     
     if a_spin <= 0.999:
         r_photon = 2 * (1 + np.cos(2/3 * np.arccos(-abs(a_spin))))
         theta_ph = np.linspace(0, 2*np.pi, 100)
-        ax.plot(r_photon * np.cos(theta_ph), r_photon * np.sin(theta_ph), 
+        ax3.plot(r_photon * np.cos(theta_ph), r_photon * np.sin(theta_ph), 
                 '#ff8888', linewidth=2, linestyle='--', label='Photon Sphere')
     
     for impact in [6, 8, 10]:
         t = np.linspace(0, 50, 400)
         r = 12 * np.exp(-t/35) + r_horizon + 0.5
         phi = (impact/10) * np.sin(t/25)
-        ax.plot(r * np.cos(phi), r * np.sin(phi), '#88ff88', linewidth=1.5, alpha=0.7)
+        ax3.plot(r * np.cos(phi), r * np.sin(phi), '#88ff88', linewidth=1.5, alpha=0.7)
     
-    ax.set_aspect('equal')
-    ax.set_xlim(-14, 14)
-    ax.set_ylim(-14, 14)
-    ax.set_title(f'Kerr Spacetime | a/M = {a_spin:.3f}', color='#00aaff')
-    ax.legend()
-    ax.axis('off')
+    ax3.set_aspect('equal')
+    ax3.set_xlim(-14, 14)
+    ax3.set_ylim(-14, 14)
+    ax3.set_title(f'Kerr Spacetime | a/M = {a_spin:.3f}', color='#00aaff')
+    ax3.legend()
+    ax3.axis('off')
     
-    fig.canvas.draw()
-    img_data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    img_data = img_data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    st.image(img_data, use_container_width=True)
-    plt.close(fig)
-    st.caption(f"Event Horizon: r_+ = {r_horizon:.3f} M | Photon Sphere: r_ph = {r_photon:.3f} M")
+    st.pyplot(fig3)
+    plt.close(fig3)
+    st.caption(f"Event Horizon: r_+ = {r_horizon:.3f} M")
 
 st.markdown("---")
-st.markdown("⚡ **Stellaris QED Explorer v10.1** | Final Working | Tony Ford Model")
+st.markdown("⚡ **Stellaris QED Explorer v10.2** | Final Fixed | Tony Ford Model")
