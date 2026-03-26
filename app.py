@@ -1,6 +1,6 @@
 """
-Stellaris QED Explorer v10.0 – COMPLETE WORKING VERSION
-All tabs display | Preloaded examples | Full physics
+Stellaris QED Explorer v10.1 – FINAL WORKING
+All images display | No placeholders
 """
 
 import io
@@ -18,7 +18,7 @@ warnings.filterwarnings('ignore')
 # ── PAGE CONFIG ─────────────────────────────────────────────
 st.set_page_config(
     layout="wide",
-    page_title="Stellaris QED Explorer v10.0",
+    page_title="Stellaris QED Explorer v10.1",
     page_icon="⚡",
     initial_sidebar_state="expanded"
 )
@@ -78,7 +78,7 @@ def generate_sample_image(size=400, pattern="abell"):
 
 
 def create_fdm_soliton(size, fringe):
-    """FDM Soliton Core - ρ(r) ∝ [sin(kr)/(kr)]²"""
+    """FDM Soliton Core"""
     h, w = size
     y, x = np.ogrid[:h, :w]
     cx, cy = w//2, h//2
@@ -150,20 +150,17 @@ def process_image(image, omega, fringe, brightness=1.2):
         'rgb_overlay': rgb,
         'mixing': mixing,
         'entropy': entropy,
-        'metadata': {'omega': omega, 'fringe': fringe, 'mixing': mixing, 'entropy': entropy}
     }
 
 
 # ── SIDEBAR ─────────────────────────────────────────────
 with st.sidebar:
-    st.title("⚡ Stellaris QED v10.0")
-    st.markdown("*Complete Working Version*")
+    st.title("⚡ Stellaris QED v10.1")
+    st.markdown("*Final Working*")
     st.markdown("---")
     
-    # Preloaded examples
-    st.markdown("### 🎯 Preloaded Examples")
     selected_example = st.selectbox(
-        "Select Object",
+        "🎯 Select Object",
         ["Custom Upload"] + list(PRELOADED_DATASETS.keys())
     )
     
@@ -172,11 +169,9 @@ with st.sidebar:
         st.info(f"**{selected_example}**\n{preset['desc']}")
         omega_default = preset["omega"]
         fringe_default = preset["fringe"]
-        scale_default = preset["scale_kpc"]
     else:
         omega_default = 0.70
         fringe_default = 65
-        scale_default = 100
     
     st.markdown("---")
     st.markdown("### ⚛️ PDP Parameters")
@@ -191,7 +186,7 @@ with st.sidebar:
     m_dark = st.slider("Dark Photon Mass (eV)", 1e-12, 1e-6, 1e-9, format="%.1e")
     a_spin = st.slider("Kerr Spin a/M", 0.0, 0.998, 0.9)
     
-    st.caption("Tony Ford Model | v10.0")
+    st.caption("Tony Ford Model | v10.1")
 
 
 # ── MAIN APP ─────────────────────────────────────────────
@@ -234,22 +229,19 @@ if selected_example != "Custom Upload":
     
     st.success(f"✅ Loaded: {selected_example}")
     
-    # Side-by-side comparison
+    # ── DISPLAY USING st.image() DIRECTLY ─────────────────────────────────────────────
     st.markdown("### 📊 Before vs After")
     
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    fig.patch.set_facecolor('#0a0a1a')
+    col_before, col_after = st.columns(2)
     
-    ax1.imshow(results['original'], cmap='gray')
-    ax1.set_title(f"Before: {selected_example}", color='white', fontsize=12)
-    ax1.axis('off')
+    with col_before:
+        # Convert to PIL and display
+        before_img = (results['original'] * 255).astype(np.uint8)
+        st.image(before_img, caption=f"Before: {selected_example}", use_container_width=True, clamp=True)
     
-    ax2.imshow(results['rgb_overlay'])
-    ax2.set_title("After: PDP Entangled\nFDM Overlays", color='white', fontsize=12)
-    ax2.axis('off')
-    
-    st.pyplot(fig)
-    plt.close(fig)
+    with col_after:
+        after_img = (results['rgb_overlay'] * 255).astype(np.uint8)
+        st.image(after_img, caption="After: PDP Entangled with FDM Overlays", use_container_width=True, clamp=True)
     
     # Physics components
     st.markdown("---")
@@ -257,35 +249,20 @@ if selected_example != "Custom Upload":
     
     col_a, col_b, col_c = st.columns(3)
     
-    # Soliton Core
     with col_a:
-        fig, ax = plt.subplots(figsize=(4, 4))
-        ax.imshow(results['soliton'], cmap='hot')
-        ax.set_title("FDM Soliton Core", color='#00aaff')
-        ax.axis('off')
-        st.pyplot(fig)
-        plt.close(fig)
-        st.caption(r"$\rho(r) \propto [\sin(kr)/(kr)]^2$")
+        soliton_img = (results['soliton'] * 255).astype(np.uint8)
+        st.image(soliton_img, caption="FDM Soliton Core", use_container_width=True, clamp=True)
+        st.caption(r"$\rho(r) \propto [\sin(kr)/(kr)]^2$ | Peak: " + f"{results['soliton'].max():.3f}")
     
-    # Dark Photon Field
     with col_b:
-        fig, ax = plt.subplots(figsize=(4, 4))
-        ax.imshow(results['dark_photon'], cmap='plasma')
-        ax.set_title("Dark Photon Field", color='#00aaff')
-        ax.axis('off')
-        st.pyplot(fig)
-        plt.close(fig)
-        st.caption(r"$\lambda = h/(m v)$")
+        dp_img = (results['dark_photon'] * 255).astype(np.uint8)
+        st.image(dp_img, caption="Dark Photon Field", use_container_width=True, clamp=True)
+        st.caption(r"$\lambda = h/(m v)$ | Contrast: " + f"{results['dark_photon'].std():.3f}")
     
-    # Entangled Result
     with col_c:
-        fig, ax = plt.subplots(figsize=(4, 4))
-        ax.imshow(results['entangled'], cmap='inferno')
-        ax.set_title("PDP Entangled", color='#00aaff')
-        ax.axis('off')
-        st.pyplot(fig)
-        plt.close(fig)
-        st.caption("Enhanced with soliton")
+        entangled_img = (results['entangled'] * 255).astype(np.uint8)
+        st.image(entangled_img, caption="PDP Entangled", use_container_width=True, clamp=True)
+        st.caption("Enhanced with soliton | Mixing: " + f"{results['mixing']:.3f}")
     
     # Metrics
     st.markdown("---")
@@ -303,7 +280,7 @@ if selected_example != "Custom Upload":
 
 else:
     # Custom upload
-    uploaded = st.file_uploader("📁 Upload Image", type=['png', 'jpg', 'jpeg', 'tif'])
+    uploaded = st.file_uploader("📁 Upload Image", type=['png', 'jpg', 'jpeg'])
     
     if uploaded is not None:
         img = Image.open(uploaded).convert('L')
@@ -320,30 +297,29 @@ else:
         
         st.success(f"✅ Loaded: {uploaded.name}")
         
-        # Display results (same as above)
+        # Display results
         st.markdown("### 📊 Before vs After")
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-        fig.patch.set_facecolor('#0a0a1a')
-        ax1.imshow(results['original'], cmap='gray')
-        ax1.set_title("Original", color='white')
-        ax1.axis('off')
-        ax2.imshow(results['rgb_overlay'])
-        ax2.set_title("PDP Entangled", color='white')
-        ax2.axis('off')
-        st.pyplot(fig)
-        plt.close(fig)
+        col_before, col_after = st.columns(2)
+        
+        with col_before:
+            before_img = (results['original'] * 255).astype(np.uint8)
+            st.image(before_img, caption="Original", use_container_width=True)
+        
+        with col_after:
+            after_img = (results['rgb_overlay'] * 255).astype(np.uint8)
+            st.image(after_img, caption="PDP Entangled", use_container_width=True)
     else:
         st.info("📁 **Upload an image or select a preloaded example**")
 
 
-# ── PHYSICS TABS (EACH WITH CLEAN FIGURE) ─────────────────────────────────────────────
+# ── PHYSICS TABS (USING st.image FOR CONSISTENCY) ─────────────────────────────────────────────
 st.markdown("---")
 st.markdown("### 🔬 Quantum Vacuum Physics")
 
 # Tab 1: Magnetar Field
-with st.expander("🌌 Magnetar Field - Click to expand", expanded=True):
-    fig = plt.figure(figsize=(8, 7))
-    ax = fig.add_subplot(111)
+with st.expander("🌌 Magnetar Field", expanded=True):
+    # Create figure and convert to image
+    fig, ax = plt.subplots(figsize=(7, 6), facecolor='#0a0a1a')
     ax.set_facecolor('#0a0a1a')
     
     r = np.linspace(1.2, 5, 40)
@@ -365,13 +341,17 @@ with st.expander("🌌 Magnetar Field - Click to expand", expanded=True):
     ax.set_title(f'Magnetar Field | B = {B_surface:.1e} G', color='#00aaff')
     ax.axis('off')
     plt.colorbar(sc, ax=ax, fraction=0.046, label='log₁₀|B|')
-    st.pyplot(fig)
+    
+    # Convert to PIL and display
+    fig.canvas.draw()
+    img_data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    img_data = img_data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    st.image(img_data, use_container_width=True)
     plt.close(fig)
 
 # Tab 2: Dark Photons
-with st.expander("🕳️ Dark Photons - Click to expand", expanded=True):
-    fig = plt.figure(figsize=(10, 5))
-    ax = fig.add_subplot(111)
+with st.expander("🕳️ Dark Photons", expanded=True):
+    fig, ax = plt.subplots(figsize=(10, 5), facecolor='#0a0a1a')
     ax.set_facecolor('#0a0a1a')
     
     L = np.logspace(-2, 2, 500)
@@ -393,14 +373,17 @@ with st.expander("🕳️ Dark Photons - Click to expand", expanded=True):
     ax.grid(True, alpha=0.3)
     ax.legend()
     ax.tick_params(colors='white')
-    st.pyplot(fig)
+    
+    fig.canvas.draw()
+    img_data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    img_data = img_data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    st.image(img_data, use_container_width=True)
     plt.close(fig)
     st.caption(f"ε = {epsilon:.1e}, m' = {m_dark:.1e} eV, B = {B_surface:.1e} G")
 
 # Tab 3: Kerr Geodesics
-with st.expander("🌀 Kerr Geodesics - Click to expand", expanded=True):
-    fig = plt.figure(figsize=(8, 7))
-    ax = fig.add_subplot(111)
+with st.expander("🌀 Kerr Geodesics", expanded=True):
+    fig, ax = plt.subplots(figsize=(7, 6), facecolor='#0a0a1a')
     ax.set_facecolor('#0a0a1a')
     
     r_horizon = 1 + np.sqrt(1 - a_spin**2)
@@ -426,9 +409,13 @@ with st.expander("🌀 Kerr Geodesics - Click to expand", expanded=True):
     ax.set_title(f'Kerr Spacetime | a/M = {a_spin:.3f}', color='#00aaff')
     ax.legend()
     ax.axis('off')
-    st.pyplot(fig)
+    
+    fig.canvas.draw()
+    img_data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    img_data = img_data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    st.image(img_data, use_container_width=True)
     plt.close(fig)
-    st.caption(f"Event Horizon: r_+ = {r_horizon:.3f} M")
+    st.caption(f"Event Horizon: r_+ = {r_horizon:.3f} M | Photon Sphere: r_ph = {r_photon:.3f} M")
 
 st.markdown("---")
-st.markdown("⚡ **Stellaris QED Explorer v10.0** | Complete Working | Tony Ford Model")
+st.markdown("⚡ **Stellaris QED Explorer v10.1** | Final Working | Tony Ford Model")
