@@ -1,21 +1,20 @@
 """
-Stellaris QED Explorer v7.0 – QCI-Style Overlays
-Soliton cores | Wave fringes | RGB overlays | Full physics
+Stellaris QED Explorer v8.0 – QCI-Style Side-by-Side with Overlays
+Full integration: Magnetar Field + Dark Photons + FDM Solitons + Overlays
 """
 
 import io
 import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle
+from matplotlib.patches import Circle, Rectangle
 from matplotlib.colors import LinearSegmentedColormap
 from scipy.constants import c, hbar, e, m_e, alpha
 from scipy.ndimage import gaussian_filter, sobel
-from scipy.signal import convolve2d
+from PIL import Image, ImageDraw, ImageFont
 import warnings
 import time
 import pandas as pd
-from PIL import Image, ImageDraw, ImageFont
 
 # Optional imports
 try:
@@ -29,12 +28,12 @@ warnings.filterwarnings('ignore')
 # ── PAGE CONFIG ─────────────────────────────────────────────
 st.set_page_config(
     layout="wide",
-    page_title="Stellaris QED Explorer v7.0",
+    page_title="Stellaris QED Explorer v8.0",
     page_icon="⚡",
     initial_sidebar_state="expanded"
 )
 
-# High contrast dark theme
+# Professional dark theme with light accents
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] { background: #0a0a1a; }
@@ -42,9 +41,10 @@ st.markdown("""
     [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label { color: #ffffff !important; }
     .stTitle, h1, h2, h3 { color: #00aaff !important; }
     [data-testid="stMetricValue"] { color: #00aaff !important; }
-    [data-testid="stFileUploader"] { background-color: #1a1a2a; border: 2px dashed #00aaff; }
+    [data-testid="stFileUploader"] { background-color: #1a1a2a; border: 2px dashed #00aaff; border-radius: 10px; }
     .stInfo { background-color: #1a2a3a; border-left: 4px solid #00aaff; }
     .stSuccess { background-color: #1a3a2a; border-left: 4px solid #00ffaa; }
+    .stWarning { background-color: #3a2a1a; border-left: 4px solid #ffaa00; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -54,19 +54,125 @@ B_crit = m_e**2 * c**2 / (e * hbar)
 alpha_fine = 1/137.036
 
 
-# ── CORE PHYSICS FUNCTIONS (From QCI Framework) ─────────────────────────────────────────────
+# ── QCI-STYLE ANNOTATION FUNCTION ─────────────────────────────────────────────
+
+def add_qci_annotations(image_array, metadata, scale_kpc=100):
+    """
+    Add annotations to image like QCI AstroEntangle Refiner
+    Includes: scale bar, north indicator, physics info, formulas
+    """
+    # Convert to PIL
+    if len(image_array.shape) == 3:
+        img = (image_array * 255).astype(np.uint8)
+        img_pil = Image.fromarray(img)
+    else:
+        img_pil = Image.fromarray((image_array * 255).astype(np.uint8)).convert('RGB')
+    
+    draw = ImageDraw.Draw(img_pil)
+    
+    try:
+        font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+        font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
+    except:
+        font_large = ImageFont.load_default()
+        font_medium = ImageFont.load_default()
+        font_small = ImageFont.load_default()
+    
+    h, w = image_array.shape[:2]
+    
+    # ── SCALE BAR ─────────────────────────────────────────────
+    scale_bar_px = 100
+    scale_bar_kpc = (scale_bar_px / w) * scale_kpc
+    bar_y = h - 40
+    bar_x_start = 20
+    bar_x_end = bar_x_start + scale_bar_px
+    
+    draw.rectangle([bar_x_start, bar_y, bar_x_end, bar_y + 5], fill='white')
+    draw.text((bar_x_start + 30, bar_y - 18), f"{scale_bar_kpc:.0f} kpc", 
+              fill='white', font=font_small, stroke_width=1, stroke_fill='black')
+    
+    # ── NORTH INDICATOR ─────────────────────────────────────────────
+    north_x = w - 30
+    draw.line([north_x, 30, north_x, 60], fill='white', width=2)
+    draw.text((north_x - 8, 15), "N", fill='white', font=font_medium)
+    
+    # ── PHYSICS INFO BOX (LEFT TOP) ─────────────────────────────────────────────
+    info_lines = [
+        f"Ω = {metadata['omega']:.2f} | Fringe = {metadata['fringe']}",
+        f"Mixing = {metadata['mixing']:.3f} | Entropy = {metadata['entropy']:.3f}",
+        f"λ_FDM = {scale_bar_kpc / metadata['fringe'] * 8:.1f} kpc",
+        f"PDP Active: {metadata['active_modules']}"
+    ]
+    
+    # Background box
+    box_width = 240
+    box_height = len(info_lines) * 22 + 10
+    draw.rectangle([10, 10, 10 + box_width, 10 + box_height], 
+                   fill=(0, 0, 0, 180), outline='white')
+    
+    for i, line in enumerate(info_lines):
+        draw.text((15, 15 + i * 22), line, fill='cyan', font=font_small)
+    
+    # ── FORMULA BOX (RIGHT BOTTOM) ─────────────────────────────────────────────
+    formulas = [
+        r"ρ(r) ∝ [sin(kr)/kr]²",
+        r"λ = h/(m v)",
+        r"P(γ→A') = (εB/m')² sin²(m'²L/4ω)",
+        r"S = -Tr(ρ log ρ)"
+    ]
+    
+    formula_y_start = h - 100
+    formula_width = 220
+    draw.rectangle([w - formula_width - 10, formula_y_start - 5, 
+                    w - 10, formula_y_start + len(formulas) * 18 + 5],
+                   fill=(0, 0, 0, 160), outline='#88ff88')
+    
+    for i, formula in enumerate(formulas):
+        draw.text((w - formula_width - 5, formula_y_start + i * 18), 
+                  formula, fill='#88ff88', font=font_small)
+    
+    return np.array(img_pil) / 255.0
+
+
+def create_side_by_side_comparison(original, processed, metadata, scale_kpc=100):
+    """
+    Create side-by-side comparison with annotations like QCI app
+    """
+    # Annotate both images
+    original_annotated = add_qci_annotations(original, metadata, scale_kpc)
+    
+    # Processed gets additional physics overlay
+    processed_with_overlay = add_qci_annotations(processed, metadata, scale_kpc)
+    
+    # Create figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7), facecolor='#0a0a1a')
+    
+    # Original
+    ax1.imshow(original_annotated)
+    ax1.set_title("Before: Standard View\n(Public HST/JWST Data)", 
+                  color='white', fontsize=12, pad=10)
+    ax1.axis('off')
+    
+    # Processed
+    ax2.imshow(processed_with_overlay)
+    ax2.set_title("After: Photon-Dark-Photon Entangled\nFDM Overlays (Stellaris Model)", 
+                  color='white', fontsize=12, pad=10)
+    ax2.axis('off')
+    
+    fig.tight_layout()
+    return fig
+
+
+# ── PHYSICS COMPONENTS ─────────────────────────────────────────────
 
 def create_fdm_soliton(size, fringe):
-    """
-    FDM Soliton Core - ρ(r) ∝ [sin(kr)/(kr)]²
-    From QCI AstroEntangle Refiner
-    """
+    """FDM Soliton Core - ρ(r) ∝ [sin(kr)/(kr)]²"""
     h, w = size
     y, x = np.ogrid[:h, :w]
     cx, cy = w//2, h//2
     r = np.sqrt((x - cx)**2 + (y - cy)**2) / max(h, w, 1)
     
-    # Soliton scale depends on fringe
     r_s = 0.2 * (50.0 / max(fringe, 1))
     k = np.pi / max(r_s, 0.01)
     kr = k * r
@@ -74,7 +180,6 @@ def create_fdm_soliton(size, fringe):
     with np.errstate(divide='ignore', invalid='ignore'):
         soliton = np.where(kr > 1e-6, (np.sin(kr) / kr)**2, 1.0)
     
-    # Normalize to [0,1]
     soliton = (soliton - soliton.min()) / (soliton.max() - soliton.min() + 1e-9)
     soliton = gaussian_filter(soliton, sigma=2)
     
@@ -82,10 +187,7 @@ def create_fdm_soliton(size, fringe):
 
 
 def create_dark_photon_wave(size, fringe):
-    """
-    Dark Photon Wave Pattern - λ = h/(m v)
-    From QCI AstroEntangle Refiner
-    """
+    """Dark Photon Wave Pattern - λ = h/(m v)"""
     h, w = size
     y, x = np.ogrid[:h, :w]
     cx, cy = w//2, h//2
@@ -93,7 +195,6 @@ def create_dark_photon_wave(size, fringe):
     theta = np.arctan2(y - cy, x - cx)
     k = fringe / 20.0
     
-    # Multiple wave modes
     radial = np.sin(k * 2 * np.pi * r * 3)
     spiral = np.sin(k * 2 * np.pi * (r + theta / (2 * np.pi)))
     angular = np.sin(k * 3 * theta)
@@ -105,17 +206,12 @@ def create_dark_photon_wave(size, fringe):
     else:
         pattern = spiral * 0.5 + angular * 0.3 + radial * 0.2
     
-    # Normalize to [0,1]
     pattern = (pattern - pattern.min()) / (pattern.max() - pattern.min() + 1e-9)
-    
     return pattern
 
 
 def create_dark_matter_density(image, soliton):
-    """
-    Dark Matter Density from gradients
-    From QCI AstroEntangle Refiner
-    """
+    """Dark Matter Density from gradients"""
     smoothed = gaussian_filter(image, sigma=8)
     grad_x = sobel(smoothed, axis=0)
     grad_y = sobel(smoothed, axis=1)
@@ -126,93 +222,74 @@ def create_dark_matter_density(image, soliton):
     else:
         gradient = np.zeros_like(gradient)
     
-    dm = soliton * 0.6 + gradient * 0.4
-    return np.clip(dm, 0, 1)
+    return np.clip(soliton * 0.6 + gradient * 0.4, 0, 1)
 
 
-def create_rgb_overlay(image, dark_photon, dm_density, soliton, alpha=0.6):
-    """
-    Create RGB composite overlay like QCI Refiner
-    R: Original image
-    G: Dark Photon Field + Soliton
-    B: Dark Matter Density + Soliton
-    """
-    # Normalize inputs
+def create_rgb_overlay(image, dark_photon, dm_density, soliton):
+    """RGB Composite: R=Image, G=Dark Photon+Soliton, B=Dark Matter+Soliton"""
     img_norm = np.clip(image, 0, 1)
     dp_norm = np.clip(dark_photon, 0, 1)
     dm_norm = np.clip(dm_density, 0, 1)
     sol_norm = np.clip(soliton, 0, 1)
     
-    # RGB channels
     red = img_norm
     green = img_norm * 0.3 + dp_norm * 0.5 + sol_norm * 0.2
     blue = img_norm * 0.2 + dm_norm * 0.6 + sol_norm * 0.2
     
-    rgb = np.stack([red, green, blue], axis=-1)
-    return np.clip(rgb, 0, 1)
+    return np.clip(np.stack([red, green, blue], axis=-1), 0, 1)
 
 
-def add_annotations_to_image(img_array, metadata, scale_kpc=100):
-    """
-    Add physics annotations to image (scale bar, formulas, etc.)
-    """
-    if len(img_array.shape) == 3:
-        img = (img_array * 255).astype(np.uint8)
-        img_pil = Image.fromarray(img)
-    else:
-        img_pil = Image.fromarray((img_array * 255).astype(np.uint8)).convert('RGB')
+def process_image(image, omega, fringe, brightness=1.2):
+    """Full PDP processing pipeline"""
+    h, w = image.shape
     
-    draw = ImageDraw.Draw(img_pil)
+    # Create components
+    soliton = create_fdm_soliton((h, w), fringe)
+    dark_photon = create_dark_photon_wave((h, w), fringe)
+    dm_density = create_dark_matter_density(image, soliton)
     
-    try:
-        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
-        font_tiny = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
-    except:
-        font_small = ImageFont.load_default()
-        font_tiny = ImageFont.load_default()
+    # Mixing
+    mixing = omega * 0.6
     
-    h, w = img_array.shape[:2]
+    # Entangled result
+    result = image * (1 - mixing * 0.4)
+    result = result + dark_photon * mixing * 0.5
+    result = result + dm_density * mixing * 0.3
+    result = result + soliton * mixing * 0.4
+    result = result * brightness
+    result = np.clip(result, 0, 1)
     
-    # Scale bar
-    scale_bar_px = 100
-    scale_bar_kpc = (scale_bar_px / w) * scale_kpc
-    draw.rectangle([20, h-40, 20+scale_bar_px, h-35], fill='white', outline='white')
-    draw.text((20+30, h-58), f"{scale_bar_kpc:.0f} kpc", fill='white', font=font_tiny)
+    # RGB overlay
+    rgb = create_rgb_overlay(result, dark_photon, dm_density, soliton)
     
-    # North indicator
-    draw.line([w-30, 30, w-30, 60], fill='white', width=2)
-    draw.text((w-38, 15), "N", fill='white', font=font_small)
+    # Entropy
+    entropy = -mixing * np.log(mixing + 1e-12)
     
-    # Physics info box
-    info_lines = [
-        f"Ω = {metadata['omega']:.2f} | Fringe = {metadata['fringe']}",
-        f"Mixing = {metadata['mixing']:.3f} | Entropy = {metadata['entropy']:.3f}",
-        f"λ = {scale_bar_kpc / metadata['fringe'] * 8:.1f} kpc"
-    ]
+    metadata = {
+        'omega': omega,
+        'fringe': fringe,
+        'mixing': mixing,
+        'entropy': entropy,
+        'brightness': brightness,
+        'active_modules': 'FDM + Dark Photon + DM'
+    }
     
-    for i, line in enumerate(info_lines):
-        draw.text((15, 15 + i*22), line, fill='cyan', font=font_small, stroke_width=1, stroke_fill='black')
-    
-    # Formulas
-    formulas = [
-        r"ρ(r) ∝ [sin(kr)/kr]²",
-        r"λ = h/(m v)",
-        r"P(γ→A') = (εB/m')² sin²(m'²L/4ω)"
-    ]
-    
-    formula_y = h - 80
-    for i, formula in enumerate(formulas):
-        draw.text((w - 210, formula_y + i*18), formula, fill='#88ff88', font=font_tiny)
-    
-    return np.array(img_pil) / 255.0
+    return {
+        'original': image,
+        'entangled': result,
+        'soliton': soliton,
+        'dark_photon': dark_photon,
+        'dark_matter': dm_density,
+        'rgb_overlay': rgb,
+        'metadata': metadata
+    }
 
 
 # ── FILE LOADING ─────────────────────────────────────────────
 
 def load_file(uploaded_file):
-    """Universal file loader"""
-    filename = uploaded_file.name
-    ext = filename.split(".")[-1].lower()
+    """Load image file"""
+    ext = uploaded_file.name.split(".")[-1].lower()
     data_bytes = uploaded_file.read()
     
     try:
@@ -221,124 +298,34 @@ def load_file(uploaded_file):
                 data = hdul[0].data.astype(np.float32)
                 if len(data.shape) > 2:
                     data = data[0] if data.shape[0] < data.shape[1] else data[:, :, 0]
-                return {'data': data, 'type': 'FITS', 'name': filename}
+                return {'data': data, 'type': 'FITS'}
         
         elif ext in ['png', 'jpg', 'jpeg', 'tif', 'tiff', 'bmp']:
-            img = Image.open(io.BytesIO(data_bytes))
-            if img.mode != 'L':
-                img = img.convert('L')
-            data = np.array(img, dtype=np.float32)
-            return {'data': data, 'type': 'IMAGE', 'name': filename}
-        
-        elif ext == 'csv':
-            df = pd.read_csv(io.BytesIO(data_bytes))
-            data = df.values.astype(np.float32)
-            if len(data.shape) == 1:
-                data = data.reshape(1, -1)
-            return {'data': data, 'type': 'CSV', 'name': filename}
-        
-        elif ext == 'npy':
-            data = np.load(io.BytesIO(data_bytes))
-            if len(data.shape) == 1:
-                data = data.reshape(1, -1)
-            return {'data': data, 'type': 'NUMPY', 'name': filename}
+            img = Image.open(io.BytesIO(data_bytes)).convert('L')
+            return {'data': np.array(img, dtype=np.float32), 'type': 'IMAGE'}
         
         else:
             return None
-            
     except Exception as e:
-        st.error(f"Error loading {filename}: {str(e)}")
+        st.error(f"Error: {e}")
         return None
 
 
-def normalize_data(data):
-    """Normalize to [0,1] range"""
-    data = np.nan_to_num(data, nan=0.0, posinf=1.0, neginf=0.0)
+def normalize(data):
+    """Normalize to [0,1]"""
+    data = np.nan_to_num(data, nan=0.0)
     if data.max() > data.min():
         return (data - data.min()) / (data.max() - data.min())
     return data
 
 
-# ── MAIN PROCESSING PIPELINE ─────────────────────────────────────────────
-
-def process_image_with_pdp(image, omega, fringe, brightness=1.2, scale_kpc=100):
-    """
-    Full PDP processing with QCI-style outputs
-    """
-    h, w = image.shape
-    
-    # Create physics components
-    soliton = create_fdm_soliton((h, w), fringe)
-    dark_photon = create_dark_photon_wave((h, w), fringe)
-    dm_density = create_dark_matter_density(image, soliton)
-    
-    # Mixing strength
-    mixing = omega * 0.6
-    
-    # Entangled image
-    result = image * (1 - mixing * 0.4)
-    result = result + dark_photon * mixing * 0.5
-    result = result + dm_density * mixing * 0.3
-    result = result + soliton * mixing * 0.4
-    result = result * brightness
-    result = np.clip(result, 0, 1)
-    
-    # RGB composite overlay
-    rgb_overlay = create_rgb_overlay(result, dark_photon, dm_density, soliton)
-    
-    # Annotated version
-    metadata = {
-        'omega': omega,
-        'fringe': fringe,
-        'mixing': mixing,
-        'entropy': -mixing * np.log(mixing + 1e-12),
-        'brightness': brightness,
-        'scale_kpc': scale_kpc
-    }
-    
-    annotated = add_annotations_to_image(rgb_overlay, metadata, scale_kpc)
-    
-    return {
-        'original': image,
-        'entangled': result,
-        'soliton': soliton,
-        'dark_photon': dark_photon,
-        'dark_matter': dm_density,
-        'rgb_overlay': rgb_overlay,
-        'annotated': annotated,
-        'metadata': metadata
-    }
-
-
-# ── PLOTTING FUNCTIONS ─────────────────────────────────────────────
-
-def display_image(img, title, cmap=None, figsize=(5, 5)):
-    """Display image with optional colormap"""
-    fig, ax = plt.subplots(figsize=figsize, facecolor='#0a0a1a')
-    ax.set_facecolor('#0a0a1a')
-    
-    if len(img.shape) == 3:
-        ax.imshow(np.clip(img, 0, 1))
-    else:
-        ax.imshow(img, cmap=cmap, vmin=0, vmax=1)
-    
-    ax.set_title(title, color='#00aaff', fontsize=12)
-    ax.axis('off')
-    fig.tight_layout()
-    return fig
-
-
 # ── SIDEBAR ─────────────────────────────────────────────
 with st.sidebar:
-    st.title("⚡ Stellaris QED v7.0")
-    st.markdown("*QCI-Style Overlays*")
+    st.title("⚡ Stellaris QED v8.0")
+    st.markdown("*QCI-Style Side-by-Side*")
     st.markdown("---")
     
-    uploaded_file = st.file_uploader(
-        "📁 **Drop file here**",
-        type=['fits', 'png', 'jpg', 'jpeg', 'tif', 'tiff', 'npy', 'csv'],
-        help="FITS | Images | NumPy | CSV"
-    )
+    uploaded = st.file_uploader("📁 Upload Image", type=['fits', 'png', 'jpg', 'jpeg', 'tif', 'tiff'])
     
     st.markdown("---")
     st.markdown("### ⚛️ PDP Parameters")
@@ -358,12 +345,12 @@ with st.sidebar:
     st.latex(r"\rho_{\text{FDM}} \propto \left[\frac{\sin(kr)}{kr}\right]^2")
     st.latex(r"P_{\gamma\to A'} = \left(\frac{\varepsilon B}{m_{A'}}\right)^2\sin^2\left(\frac{m_{A'}^2 L}{4\omega}\right)")
     
-    st.caption("Tony Ford Model | v7.0 - QCI Style")
+    st.caption("Tony Ford Model | v8.0 - QCI Style")
 
 
 # ── MAIN APP ─────────────────────────────────────────────
 st.title("⚡ Stellaris QED Explorer")
-st.markdown("*Photon-Dark Photon Entanglement with FDM Soliton Overlays*")
+st.markdown("*Photon-Dark-Photon Entangled FDM with Soliton Overlays*")
 st.markdown("---")
 
 # Metrics
@@ -383,77 +370,68 @@ if B_ratio > 1:
     st.warning(f"⚠️ **Super-critical field!** B/B_crit = {B_ratio:.2e} | QED effects dominate.")
 
 
-# ── PROCESS UPLOADED FILE ─────────────────────────────────────────────
-if uploaded_file is not None:
-    with st.spinner(f"📂 Loading {uploaded_file.name}..."):
-        file_data = load_file(uploaded_file)
+# ── PROCESS UPLOADED IMAGE ─────────────────────────────────────────────
+if uploaded is not None:
+    with st.spinner("Loading image..."):
+        file_data = load_file(uploaded)
     
     if file_data is not None:
-        st.success(f"✅ Loaded: {file_data['name']} | Type: {file_data['type']} | Shape: {file_data['data'].shape}")
+        st.success(f"✅ Loaded: {uploaded.name} | Type: {file_data['type']}")
         
-        # Process data
-        data = normalize_data(file_data['data'])
+        # Process image
+        data = normalize(file_data['data'])
         
-        # Resize if too large
+        # Resize if needed
         MAX_SIZE = 500
         if data.shape[0] > MAX_SIZE or data.shape[1] > MAX_SIZE:
             from skimage.transform import resize
             data = resize(data, (MAX_SIZE, MAX_SIZE), preserve_range=True)
-            data = normalize_data(data)
+            data = normalize(data)
         
-        # Apply PDP processing
-        with st.spinner("⚛️ Applying PDP physics with soliton overlays..."):
-            results = process_image_with_pdp(data, omega, fringe, brightness, scale_kpc)
+        # Apply PDP
+        with st.spinner("Applying PDP physics..."):
+            results = process_image(data, omega, fringe, brightness)
         
-        # ── MAIN COMPARISON (ANNOTATED) ─────────────────────────────────────────────
-        st.markdown("### 📊 Annotated Comparison")
+        # ── SIDE-BY-SIDE COMPARISON (QCI STYLE) ─────────────────────────────────────────────
+        st.markdown("### 📊 Before vs After")
         
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6), facecolor='#0a0a1a')
-        
-        ax1.imshow(results['original'], cmap='gray')
-        ax1.set_title("Before: Original Image", color='white', fontsize=12)
-        ax1.axis('off')
-        
-        ax2.imshow(results['annotated'])
-        ax2.set_title("After: Photon-Dark-Photon Entangled\nFDM Overlays", color='white', fontsize=12)
-        ax2.axis('off')
-        
-        fig.tight_layout()
-        st.pyplot(fig)
-        plt.close(fig)
+        comparison_fig = create_side_by_side_comparison(
+            results['original'], 
+            results['rgb_overlay'], 
+            results['metadata'], 
+            scale_kpc
+        )
+        st.pyplot(comparison_fig)
+        plt.close(comparison_fig)
         
         # ── PHYSICS COMPONENTS ─────────────────────────────────────────────
+        st.markdown("---")
         st.markdown("### ⚛️ FDM Physics Components")
         
         col_a, col_b, col_c = st.columns(3)
         
-        with col_a:
-            fig = display_image(results['soliton'], "FDM Soliton Core", 'hot', (4, 4))
+        def show_component(img, title, cmap):
+            fig, ax = plt.subplots(figsize=(4, 4), facecolor='#0a0a1a')
+            ax.imshow(img, cmap=cmap, vmin=0, vmax=1)
+            ax.set_title(title, color='#00aaff')
+            ax.axis('off')
             st.pyplot(fig)
             plt.close(fig)
+        
+        with col_a:
+            show_component(results['soliton'], "FDM Soliton Core", 'hot')
             st.caption(r"$\rho(r) \propto [\sin(kr)/(kr)]^2$")
         
         with col_b:
-            fig = display_image(results['dark_photon'], "Dark Photon Field", 'plasma', (4, 4))
-            st.pyplot(fig)
-            plt.close(fig)
-            st.caption(r"$\lambda = h/(m v)$ interference pattern")
+            show_component(results['dark_photon'], "Dark Photon Field", 'plasma')
+            st.caption(r"$\lambda = h/(m v)$ interference")
         
         with col_c:
-            fig = display_image(results['dark_matter'], "Dark Matter Density", 'viridis', (4, 4))
-            st.pyplot(fig)
-            plt.close(fig)
+            show_component(results['dark_matter'], "Dark Matter Density", 'viridis')
             st.caption(r"From $\nabla^2\Phi = 4\pi G\rho$")
         
-        # ── RGB OVERLAY ─────────────────────────────────────────────
-        st.markdown("### 🎨 RGB Composite Overlay")
-        st.caption("Red: Image | Green: Dark Photon + Soliton | Blue: Dark Matter + Soliton")
-        
-        fig = display_image(results['rgb_overlay'], "PDP Entangled RGB Composite", None, (8, 8))
-        st.pyplot(fig)
-        plt.close(fig)
-        
         # ── METRICS ─────────────────────────────────────────────
+        st.markdown("---")
         st.markdown("### 📈 Physics Metrics")
         
         col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
@@ -474,12 +452,12 @@ if uploaded_file is not None:
         st.markdown("---")
         st.subheader("💾 Download Results")
         
-        def array_to_png(arr, cmap=None):
+        def save_fig(img, cmap=None):
             fig, ax = plt.subplots(figsize=(8, 8), facecolor='black')
-            if len(arr.shape) == 3:
-                ax.imshow(np.clip(arr, 0, 1))
+            if len(img.shape) == 3:
+                ax.imshow(np.clip(img, 0, 1))
             else:
-                ax.imshow(arr, cmap=cmap, vmin=0, vmax=1)
+                ax.imshow(img, cmap=cmap, vmin=0, vmax=1)
             ax.axis('off')
             buf = io.BytesIO()
             plt.savefig(buf, format='png', bbox_inches='tight', facecolor='black')
@@ -489,27 +467,32 @@ if uploaded_file is not None:
         col_d1, col_d2, col_d3, col_d4 = st.columns(4)
         
         with col_d1:
-            st.download_button("📸 Annotated Comparison", array_to_png(results['annotated']), "annotated_comparison.png")
+            # Save comparison figure
+            buf = io.BytesIO()
+            comparison_fig.savefig(buf, format='png', bbox_inches='tight', facecolor='black')
+            st.download_button("📸 Comparison", buf.getvalue(), "comparison.png")
         with col_d2:
-            st.download_button("🌌 Entangled Image", array_to_png(results['entangled'], 'inferno'), "entangled.png")
+            st.download_button("🌌 PDP Entangled", save_fig(results['entangled'], 'inferno'), "entangled.png")
         with col_d3:
-            st.download_button("⭐ Soliton Core", array_to_png(results['soliton'], 'hot'), "soliton.png")
+            st.download_button("⭐ Soliton Core", save_fig(results['soliton'], 'hot'), "soliton.png")
         with col_d4:
-            st.download_button("🌊 Fringe Pattern", array_to_png(results['dark_photon'], 'plasma'), "fringe.png")
+            st.download_button("🌊 Fringe Pattern", save_fig(results['dark_photon'], 'plasma'), "fringe.png")
 
 else:
     st.info("""
-    ## 📁 **Drop an image to see FDM Soliton Overlays**
+    ## 📁 **Upload an image to see FDM Soliton Overlays**
     
     **What you'll see:**
-    - 🎨 **RGB Composite**: Red=Image, Green=Dark Photon, Blue=Dark Matter
-    - ⭐ **FDM Soliton Core**: Central [sin(kr)/kr]² profile
-    - 🌊 **Dark Photon Field**: Wave interference patterns
+    - 📊 **Side-by-Side Comparison**: Before/After with annotations
     - 📏 **Scale Bar**: Physical scale in kpc
-    - 📐 **Physics Formulas**: Key equations overlaid
+    - 🧭 **North Indicator**: Orientation marker
+    - 📐 **Physics Info Box**: Ω, fringe, mixing angle, entropy
+    - 📝 **Formula Overlays**: Key equations on the image
+    - ⚛️ **FDM Soliton Core**: [sin(kr)/kr]² profile
+    - 🌊 **Dark Photon Field**: Wave interference patterns
+    - 🌌 **Dark Matter Density**: Substructure map
     
-    **Try with:**
-    - Crab Nebula, Bullet Cluster, Abell 1689, or any astronomical image
+    **Try with:** Crab Nebula, Bullet Cluster, Abell 1689, or any astronomical image
     """)
 
 # ── PHYSICS TABS ─────────────────────────────────────────────
@@ -588,4 +571,4 @@ with tab3:
     plt.close(fig)
 
 st.markdown("---")
-st.markdown("⚡ **Stellaris QED Explorer v7.0** | QCI-Style Overlays | Soliton Cores | Wave Fringes | Tony Ford Model")
+st.markdown("⚡ **Stellaris QED Explorer v8.0** | QCI-Style Side-by-Side | FDM Soliton Overlays | Tony Ford Model")
