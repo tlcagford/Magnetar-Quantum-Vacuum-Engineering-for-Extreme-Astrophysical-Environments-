@@ -1,0 +1,5 @@
+build-essential
+python3-dev
+libfreetype6-dev
+libpng-dev
+pkg-config
