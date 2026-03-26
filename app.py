@@ -1,6 +1,6 @@
 """
-Magnetar QED Explorer v2.2 – Fully Working
-Annotated side-by-side | Reliable plots | All downloads
+Magnetar QED Explorer v2.3 – Final
+Drag & drop | Preloaded examples | Annotated side‑by‑side | All plots
 """
 
 import io
@@ -18,7 +18,7 @@ warnings.filterwarnings('ignore')
 # ── PAGE CONFIG ─────────────────────────────────────────────
 st.set_page_config(
     layout="wide",
-    page_title="Magnetar QED Explorer v2.2",
+    page_title="Magnetar QED Explorer v2.3",
     page_icon="⚡",
     initial_sidebar_state="expanded"
 )
@@ -41,18 +41,19 @@ B_crit = m_e**2 * c**2 / (e * hbar)
 alpha_fine = 1/137.036
 
 
-# ── PRELOADED DATASETS ─────────────────────────────────────────────
+# ── PRELOADED DATASETS (simulated examples) ─────────────────────────────────────────────
+# These are synthetic images for demonstration. For real NASA data, use the upload option.
 PRELOADED = {
-    "🌌 Bullet Cluster": {"fringe": 70, "omega": 0.75, "pattern": "bullet", "desc": "Merging cluster - dark matter separation"},
-    "🔭 Abell 1689": {"fringe": 55, "omega": 0.65, "pattern": "abell", "desc": "Strong lensing - prominent soliton"},
-    "✨ Abell 209": {"fringe": 60, "omega": 0.70, "pattern": "abell", "desc": "Balanced fringe visibility"},
-    "🦀 Crab Nebula": {"fringe": 50, "omega": 0.68, "pattern": "crab", "desc": "Supernova remnant - filaments"},
-    "📡 Centaurus A": {"fringe": 45, "omega": 0.62, "pattern": "centaurus", "desc": "Radio galaxy - jet structure"}
+    "🌌 Bullet Cluster (simulated)": {"fringe": 70, "omega": 0.75, "pattern": "bullet", "desc": "Merging cluster – dark matter separation"},
+    "🔭 Abell 1689 (simulated)": {"fringe": 55, "omega": 0.65, "pattern": "abell", "desc": "Strong lensing – prominent soliton"},
+    "✨ Abell 209 (simulated)": {"fringe": 60, "omega": 0.70, "pattern": "abell", "desc": "Balanced fringe visibility"},
+    "🦀 Crab Nebula (simulated)": {"fringe": 50, "omega": 0.68, "pattern": "crab", "desc": "Supernova remnant – filaments"},
+    "📡 Centaurus A (simulated)": {"fringe": 45, "omega": 0.62, "pattern": "centaurus", "desc": "Radio galaxy – jet structure"}
 }
 
 
 def generate_sample(size=400, pattern="abell"):
-    """Generate synthetic image"""
+    """Generate synthetic sample image (for preloaded examples)"""
     img = np.zeros((size, size))
     cx, cy = size//2, size//2
     
@@ -261,25 +262,32 @@ with st.sidebar:
     st.markdown("*Quantum Vacuum Physics*")
     st.markdown("---")
     
-    data_source = st.radio("📁 Data", ["🌌 Preloaded", "📤 Upload"])
+    st.markdown("### 📁 Data Source")
+    data_source = st.radio("Choose", ["📤 Upload your image", "🌌 Preloaded example"])
     
-    if data_source == "🌌 Preloaded":
-        selected = st.selectbox("Select Object", list(PRELOADED.keys()))
+    if data_source == "📤 Upload your image":
+        uploaded = st.file_uploader(
+            "Drag & drop file here",
+            type=['fits', 'png', 'jpg', 'jpeg', 'tif', 'tiff'],
+            help="FITS (astronomy), PNG, JPG, TIFF"
+        )
+        use_preload = False
+    else:
+        selected = st.selectbox("Select object", list(PRELOADED.keys()))
         preset = PRELOADED[selected]
         st.info(preset['desc'])
         use_preload = True
         omega_default = preset["omega"]
         fringe_default = preset["fringe"]
-    else:
-        use_preload = False
-        omega_default = 0.70
-        fringe_default = 65
-        uploaded = st.file_uploader("Drop Image", type=['png', 'jpg', 'jpeg'])
     
     st.markdown("---")
     st.markdown("### ⚛️ Parameters")
-    omega = st.slider("Ω Entanglement", 0.1, 1.0, omega_default, 0.05)
-    fringe = st.slider("Fringe Scale", 20, 120, fringe_default, 5)
+    if use_preload:
+        omega = st.slider("Ω Entanglement", 0.1, 1.0, preset["omega"], 0.05)
+        fringe = st.slider("Fringe Scale", 20, 120, preset["fringe"], 5)
+    else:
+        omega = st.slider("Ω Entanglement", 0.1, 1.0, 0.70, 0.05)
+        fringe = st.slider("Fringe Scale", 20, 120, 65, 5)
     brightness = st.slider("Brightness", 0.8, 1.8, 1.2, 0.05)
     scale_kpc = st.selectbox("Scale (kpc)", [50, 100, 150, 200, 300], index=1)
     
@@ -290,7 +298,7 @@ with st.sidebar:
     m_dark = st.slider("Dark Photon Mass (eV)", 1e-12, 1e-6, 1e-9, format="%.1e")
     a_spin = st.slider("Kerr Spin", 0.0, 0.998, 0.9)
     
-    st.caption("Tony Ford | Magnetar QED v2.2")
+    st.caption("Tony Ford | Magnetar QED v2.3")
 
 
 # ── MAIN APP ─────────────────────────────────────────────
@@ -314,7 +322,7 @@ if B_ratio > 1:
     st.warning(f"⚠️ Super-critical field! B/B_crit = {B_ratio:.2e} | QED dominates.")
 
 
-# ── PROCESS ─────────────────────────────────────────────
+# ── LOAD AND PROCESS IMAGE ─────────────────────────────────────────────
 results = None
 
 if use_preload:
@@ -322,25 +330,40 @@ if use_preload:
         pattern = PRELOADED[selected]["pattern"]
         img_data = generate_sample(400, pattern)
         results = process_image(img_data, omega, fringe, brightness)
-        st.success(f"✅ Loaded: {selected}")
+        st.success(f"✅ Loaded: {selected} (simulated example)")
 
-elif data_source == "📤 Upload" and uploaded is not None:
-    with st.spinner(f"Processing..."):
-        img = Image.open(uploaded).convert('L')
-        img_data = np.array(img, dtype=np.float32) / 255.0
+elif data_source == "📤 Upload your image" and uploaded is not None:
+    with st.spinner("Processing image..."):
+        ext = uploaded.name.split(".")[-1].lower()
+        if ext == 'fits':
+            try:
+                from astropy.io import fits
+                with fits.open(io.BytesIO(uploaded.read())) as hdul:
+                    img_data = hdul[0].data.astype(np.float32)
+                    if len(img_data.shape) > 2:
+                        img_data = img_data[0]
+            except ImportError:
+                st.error("Astropy not installed. Install with: pip install astropy")
+                st.stop()
+        else:
+            img = Image.open(uploaded).convert('L')
+            img_data = np.array(img, dtype=np.float32) / 255.0
+        
+        # Resize if needed
         if img_data.shape[0] > 500:
             from skimage.transform import resize
             img_data = resize(img_data, (500, 500), preserve_range=True)
+        
         results = process_image(img_data, omega, fringe, brightness)
         st.success(f"✅ Loaded: {uploaded.name}")
 
 else:
-    st.info("📁 **Select a preloaded object or upload an image**")
+    st.info("📁 **Select a preloaded example or upload your own image**")
 
 
-# ── DISPLAY ANNOTATED SIDE-BY-SIDE ─────────────────────────────────────────────
+# ── DISPLAY RESULTS ─────────────────────────────────────────────
 if results is not None:
-    # Update metadata
+    # Update metadata with current parameters
     results['metadata'].update({
         'omega': omega,
         'fringe': fringe,
@@ -349,7 +372,7 @@ if results is not None:
         'brightness': brightness,
     })
     
-    # Annotated comparison
+    # Annotated side‑by‑side comparison
     st.markdown("### 📊 Annotated Comparison")
     comparison_fig = create_annotated_side_by_side(
         results['original'],
@@ -409,7 +432,7 @@ if results is not None:
         st.download_button("⚡ Entangled", save_array_png(results['entangled'], 'inferno'), "entangled.png", use_container_width=True)
 
 
-# ── MAGNETAR PHYSICS TABS (FIXED WITH fig_to_pil) ─────────────────────────────────────────────
+# ── MAGNETAR PHYSICS TABS (reliable display with fig_to_pil) ─────────────────────────────────────────────
 st.markdown("---")
 st.markdown("### 🔬 Magnetar Physics")
 
@@ -447,23 +470,19 @@ with tab1:
     st.download_button("📥 Download Field Plot", buf1, "magnetar_field.png", use_container_width=True)
     plt.close(fig1)
 
-# Tab 2: Dark Photons (log scale)
+# Tab 2: Dark Photons (log y‑scale)
 with tab2:
     fig2, ax2 = plt.subplots(figsize=(10, 5), facecolor='#0a0a1a')
     ax2.set_facecolor('#0a0a1a')
     
-    L = np.logspace(-2, 6, 500)  # extended range
+    L = np.logspace(-2, 6, 500)  # extended range to see oscillations
     if m_dark <= 0:
         P = (epsilon * B_surface / 1e15)**2 * np.ones_like(L)
     else:
         hbar_ev_s = 6.582e-16
         c_km_s = 3e5
         conv_len = 4 * 1e18 * hbar_ev_s * c_km_s / (m_dark**2)
-        # For large conversion length, avoid division by zero
-        if conv_len > 0:
-            P = (epsilon * B_surface / 1e15)**2 * np.sin(np.pi * L / conv_len)**2
-        else:
-            P = (epsilon * B_surface / 1e15)**2 * np.ones_like(L)
+        P = (epsilon * B_surface / 1e15)**2 * np.sin(np.pi * L / conv_len)**2
     P = np.clip(P, 1e-30, 1)
     
     ax2.semilogx(L, P, '#00aaff', linewidth=2.5)
@@ -523,4 +542,4 @@ with tab3:
     st.caption(f"Event Horizon: r_+ = {r_horizon:.3f} M")
 
 st.markdown("---")
-st.markdown("⚡ **Magnetar QED Explorer v2.2** | Annotated Side-by-Side | Tony Ford Model")
+st.markdown("⚡ **Magnetar QED Explorer v2.3** | Drag & Drop | Preloaded Examples | Tony Ford Model")
