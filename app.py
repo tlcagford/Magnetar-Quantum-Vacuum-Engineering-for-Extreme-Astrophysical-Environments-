@@ -1,6 +1,6 @@
 """
-Magnetar QED Explorer v2.0 – QCI-Style Annotated Side-by-Side
-Magnetar fields | Dark photons | FDM solitons | PDP entanglement
+Magnetar QED Explorer v2.1 – Fixed NameError
+Annotated side-by-side with all required functions
 """
 
 import io
@@ -18,12 +18,12 @@ warnings.filterwarnings('ignore')
 # ── PAGE CONFIG ─────────────────────────────────────────────
 st.set_page_config(
     layout="wide",
-    page_title="Magnetar QED Explorer v2.0",
+    page_title="Magnetar QED Explorer v2.1",
     page_icon="⚡",
     initial_sidebar_state="expanded"
 )
 
-# Dark professional theme
+# Dark theme
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] { background: #0a0a1a; }
@@ -154,10 +154,13 @@ def process_image(image, omega, fringe, brightness=1.2):
     }
 
 
+def array_to_pil(arr):
+    """Convert numpy array to PIL Image"""
+    return Image.fromarray((arr * 255).astype(np.uint8))
+
+
 def add_annotations(image_array, metadata, scale_kpc=100, title_prefix="Before"):
-    """
-    Add QCI-style annotations: scale bar, north, physics info, formulas
-    """
+    """Add QCI-style annotations"""
     if len(image_array.shape) == 3:
         img = (image_array * 255).astype(np.uint8)
         img_pil = Image.fromarray(img)
@@ -228,7 +231,7 @@ def add_annotations(image_array, metadata, scale_kpc=100, title_prefix="Before")
 
 
 def create_annotated_side_by_side(original, processed, metadata, scale_kpc=100):
-    """Create side-by-side comparison with annotations"""
+    """Create side-by-side with annotations"""
     original_annotated = add_annotations(original, metadata, scale_kpc, "Before")
     processed_annotated = add_annotations(processed, metadata, scale_kpc, "After")
     
@@ -279,7 +282,7 @@ with st.sidebar:
     m_dark = st.slider("Dark Photon Mass (eV)", 1e-12, 1e-6, 1e-9, format="%.1e")
     a_spin = st.slider("Kerr Spin", 0.0, 0.998, 0.9)
     
-    st.caption("Tony Ford | Magnetar QED v2.0")
+    st.caption("Tony Ford | Magnetar QED v2.1")
 
 
 # ── MAIN APP ─────────────────────────────────────────────
@@ -329,7 +332,7 @@ else:
 
 # ── DISPLAY ANNOTATED SIDE-BY-SIDE ─────────────────────────────────────────────
 if results is not None:
-    # Add metadata to results
+    # Update metadata
     results['metadata'].update({
         'omega': omega,
         'fringe': fringe,
@@ -338,7 +341,7 @@ if results is not None:
         'brightness': brightness,
     })
     
-    # Create annotated side-by-side
+    # Annotated comparison
     st.markdown("### 📊 Annotated Comparison")
     comparison_fig = create_annotated_side_by_side(
         results['original'],
@@ -349,7 +352,7 @@ if results is not None:
     st.pyplot(comparison_fig)
     plt.close(comparison_fig)
     
-    # ── PHYSICS COMPONENTS ─────────────────────────────────────────────
+    # Quantum components
     st.markdown("---")
     st.markdown("### ⚛️ Quantum Components")
     
@@ -364,7 +367,7 @@ if results is not None:
         st.image(array_to_pil(results['entangled']), caption="PDP Entangled", use_container_width=True)
         st.caption(f"Mixing: {results['mixing']:.3f} | Entropy: {results['entropy']:.3f}")
     
-    # ── DOWNLOAD BUTTONS ─────────────────────────────────────────────
+    # Download buttons
     st.markdown("---")
     st.markdown("### 💾 Download Results")
     
@@ -504,4 +507,4 @@ with tab3:
     st.caption(f"Event Horizon: r_+ = {r_horizon:.3f} M")
 
 st.markdown("---")
-st.markdown("⚡ **Magnetar QED Explorer v2.0** | Annotated Side-by-Side | Tony Ford Model")
+st.markdown("⚡ **Magnetar QED Explorer v2.1** | Annotated Side-by-Side | Tony Ford Model")
