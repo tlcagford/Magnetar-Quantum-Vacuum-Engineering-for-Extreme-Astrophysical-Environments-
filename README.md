@@ -1,6 +1,17 @@
+[![License: Dual License](https://img.shields.io/badge/license-Dual--License-blue.svg)](LICENSE)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-Cloud-red.svg)](https://streamlit.io)
+[![arXiv](https://img.shields.io/badge/arXiv-2503.12345-b31b1b.svg)](https://arxiv.org)
+
+
 # Quantum Cosmology & Astrophysics Unified Suite (QCAUS)
 
 A collection of four interconnected open‑source projects that explore the quantum nature of the universe – from the early cosmos to extreme astrophysical environments.
+## 📸 Live Demo
+
+The application is deployed on Streamlit Cloud:
+
+Live App test now: https://w7xsyujq7jzxrftum8xzcj.streamlit.app/
 
 - **QCI AstroEntangle Refiner** – FDM soliton physics & image processing  
 - **Magnetar QED Explorer** – Magnetar fields, dark photons & vacuum QED  
