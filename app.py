@@ -1,5 +1,5 @@
 """
-Magnetar QED Explorer v1.0 – Quantum Vacuum Physics Platform
+Magnetar QED Explorer v1.1 – Complete with Downloads & Plots
 Magnetar fields | Dark photons | FDM solitons | PDP entanglement
 """
 
@@ -18,7 +18,7 @@ warnings.filterwarnings('ignore')
 # ── PAGE CONFIG ─────────────────────────────────────────────
 st.set_page_config(
     layout="wide",
-    page_title="Magnetar QED Explorer v1.0",
+    page_title="Magnetar QED Explorer v1.1",
     page_icon="⚡",
     initial_sidebar_state="expanded"
 )
@@ -31,6 +31,7 @@ st.markdown("""
     [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label { color: #ffffff !important; }
     .stTitle, h1, h2, h3 { color: #00aaff !important; }
     [data-testid="stMetricValue"] { color: #00aaff !important; }
+    .stDownloadButton button { background-color: #00aaff; color: white; border-radius: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -151,6 +152,14 @@ def array_to_pil(arr):
     return Image.fromarray((arr * 255).astype(np.uint8))
 
 
+def save_figure_to_png(fig):
+    """Save matplotlib figure to PNG bytes"""
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', facecolor='black')
+    buf.seek(0)
+    return buf.getvalue()
+
+
 # ── SIDEBAR ─────────────────────────────────────────────
 with st.sidebar:
     st.title("⚡ Magnetar QED")
@@ -185,7 +194,7 @@ with st.sidebar:
     m_dark = st.slider("Dark Photon Mass (eV)", 1e-12, 1e-6, 1e-9, format="%.1e")
     a_spin = st.slider("Kerr Spin", 0.0, 0.998, 0.9)
     
-    st.caption("Tony Ford | Magnetar QED v1.0")
+    st.caption("Tony Ford | Magnetar QED v1.1")
 
 
 # ── MAIN APP ─────────────────────────────────────────────
@@ -210,6 +219,8 @@ if B_ratio > 1:
 
 
 # ── PROCESS ─────────────────────────────────────────────
+results = None
+
 if use_preload:
     with st.spinner(f"Loading {selected}..."):
         pattern = PRELOADED[selected]["pattern"]
@@ -245,8 +256,8 @@ else:
     st.info("📁 **Select a preloaded object or upload an image**")
 
 
-# ── PHYSICS COMPONENTS ─────────────────────────────────────────────
-if 'results' in locals():
+# ── PHYSICS COMPONENTS & DOWNLOADS ─────────────────────────────────────────────
+if results is not None:
     st.markdown("---")
     st.markdown("### ⚛️ Quantum Components")
     
@@ -259,41 +270,100 @@ if 'results' in locals():
         st.caption(f"Contrast: {results['wave'].std():.3f}")
     with col_c:
         st.image(array_to_pil(results['entangled']), caption="PDP Entangled", use_container_width=True)
-        st.caption(f"Mixing: {results['mixing']:.3f}")
+        st.caption(f"Mixing: {results['mixing']:.3f} | Entropy: {results['entropy']:.3f}")
+    
+    # ── DOWNLOAD BUTTONS ─────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 💾 Download Results")
+    
+    col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+    
+    # Function to save array as PNG
+    def save_array_png(arr, cmap=None):
+        fig, ax = plt.subplots(figsize=(6, 6), facecolor='black')
+        if len(arr.shape) == 3:
+            ax.imshow(np.clip(arr, 0, 1))
+        else:
+            ax.imshow(arr, cmap=cmap, vmin=0, vmax=1)
+        ax.axis('off')
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', facecolor='black')
+        plt.close(fig)
+        return buf.getvalue()
+    
+    with col_d1:
+        st.download_button(
+            "📸 RGB Overlay",
+            save_array_png(results['rgb']),
+            "magnetar_rgb_overlay.png",
+            use_container_width=True
+        )
+    with col_d2:
+        st.download_button(
+            "⭐ Soliton Core",
+            save_array_png(results['soliton'], 'hot'),
+            "magnetar_soliton.png",
+            use_container_width=True
+        )
+    with col_d3:
+        st.download_button(
+            "🌊 Dark Photon",
+            save_array_png(results['wave'], 'plasma'),
+            "magnetar_dark_photon.png",
+            use_container_width=True
+        )
+    with col_d4:
+        st.download_button(
+            "⚡ Entangled",
+            save_array_png(results['entangled'], 'inferno'),
+            "magnetar_entangled.png",
+            use_container_width=True
+        )
 
 
-# ── MAGNETAR PHYSICS ─────────────────────────────────────────────
+# ── MAGNETAR PHYSICS TABS (WITH PLOTS) ─────────────────────────────────────────────
 st.markdown("---")
 st.markdown("### 🔬 Magnetar Physics")
 
 tab1, tab2, tab3 = st.tabs(["🌌 Magnetic Field", "🕳️ Dark Photons", "🌀 Kerr Spacetime"])
 
 with tab1:
-    fig, ax = plt.subplots(figsize=(7, 6), facecolor='#0a0a1a')
-    ax.set_facecolor('#0a0a1a')
+    fig1, ax1 = plt.subplots(figsize=(8, 7), facecolor='#0a0a1a')
+    ax1.set_facecolor('#0a0a1a')
+    
     r = np.linspace(1.2, 5, 40)
     theta = np.linspace(0, 2*np.pi, 40)
     R, Theta = np.meshgrid(r, theta)
     X = R * np.cos(Theta)
     Y = R * np.sin(Theta)
+    
     B_val = B_surface / (R**3)
     B_norm = np.log10(B_val + 1e-9)
     B_norm = (B_norm - B_norm.min()) / (B_norm.max() - B_norm.min() + 1e-9)
-    sc = ax.scatter(X, Y, c=B_norm, cmap='plasma', s=3, alpha=0.7)
-    ax.add_patch(Circle((0, 0), 1, color='#ff4444', alpha=0.9))
-    ax.text(0, 0, 'NS', color='white', ha='center', va='center', fontsize=12)
-    ax.set_aspect('equal')
-    ax.set_xlim(-5.5, 5.5)
-    ax.set_ylim(-5.5, 5.5)
-    ax.set_title(f'Magnetar Field | B = {B_surface:.1e} G', color='#00aaff')
-    ax.axis('off')
-    plt.colorbar(sc, ax=ax, fraction=0.046, label='log₁₀|B|')
-    st.pyplot(fig)
-    plt.close(fig)
+    
+    sc = ax1.scatter(X, Y, c=B_norm, cmap='plasma', s=3, alpha=0.7)
+    ax1.add_patch(Circle((0, 0), 1, color='#ff4444', alpha=0.9))
+    ax1.text(0, 0, 'NS', color='white', ha='center', va='center', fontsize=12)
+    ax1.set_aspect('equal')
+    ax1.set_xlim(-5.5, 5.5)
+    ax1.set_ylim(-5.5, 5.5)
+    ax1.set_title(f'Magnetar Field | B = {B_surface:.1e} G', color='#00aaff')
+    ax1.axis('off')
+    plt.colorbar(sc, ax=ax1, fraction=0.046, label='log₁₀|B|')
+    
+    st.pyplot(fig1)
+    
+    # Download button for magnetar field plot
+    buf1 = io.BytesIO()
+    fig1.savefig(buf1, format='png', bbox_inches='tight', facecolor='black')
+    buf1.seek(0)
+    st.download_button("📥 Download Magnetar Field Plot", buf1, "magnetar_field.png", use_container_width=True)
+    plt.close(fig1)
 
 with tab2:
-    fig, ax = plt.subplots(figsize=(10, 5), facecolor='#0a0a1a')
-    ax.set_facecolor('#0a0a1a')
+    fig2, ax2 = plt.subplots(figsize=(10, 5), facecolor='#0a0a1a')
+    ax2.set_facecolor('#0a0a1a')
+    
     L = np.logspace(-2, 2, 500)
     if m_dark <= 0:
         P = (epsilon * B_surface / 1e15)**2 * np.ones_like(L)
@@ -303,45 +373,64 @@ with tab2:
         conv_len = 4 * 1e18 * hbar_ev_s * c_km_s / (m_dark**2)
         P = (epsilon * B_surface / 1e15)**2 * np.sin(np.pi * L / conv_len)**2
     P = np.clip(P, 0, 1)
-    ax.semilogx(L, P, '#00aaff', linewidth=2.5)
-    ax.axhline(y=(epsilon * B_surface / 1e15)**2, color='#ff8888', linestyle='--', 
+    
+    ax2.semilogx(L, P, '#00aaff', linewidth=2.5)
+    ax2.axhline(y=(epsilon * B_surface / 1e15)**2, color='#ff8888', linestyle='--', 
                label=f'Max P = {(epsilon * B_surface / 1e15)**2:.2e}')
-    ax.set_xlabel('Length (km)', color='white')
-    ax.set_ylabel('P(γ→A\')', color='white')
-    ax.set_title('Dark Photon Conversion', color='#00aaff')
-    ax.grid(True, alpha=0.3)
-    ax.legend()
-    ax.tick_params(colors='white')
-    st.pyplot(fig)
-    plt.close(fig)
+    ax2.set_xlabel('Length (km)', color='white')
+    ax2.set_ylabel('P(γ→A\')', color='white')
+    ax2.set_title('Dark Photon Conversion', color='#00aaff')
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+    ax2.tick_params(colors='white')
+    
+    st.pyplot(fig2)
+    
+    # Download button for dark photon plot
+    buf2 = io.BytesIO()
+    fig2.savefig(buf2, format='png', bbox_inches='tight', facecolor='black')
+    buf2.seek(0)
+    st.download_button("📥 Download Dark Photon Plot", buf2, "dark_photon_conversion.png", use_container_width=True)
+    plt.close(fig2)
     st.caption(f"ε = {epsilon:.1e} | m' = {m_dark:.1e} eV | B = {B_surface:.1e} G")
 
 with tab3:
-    fig, ax = plt.subplots(figsize=(7, 6), facecolor='#0a0a1a')
-    ax.set_facecolor('#0a0a1a')
+    fig3, ax3 = plt.subplots(figsize=(8, 7), facecolor='#0a0a1a')
+    ax3.set_facecolor('#0a0a1a')
+    
     r_horizon = 1 + np.sqrt(1 - a_spin**2)
     circle = Circle((0, 0), r_horizon, color='#555555', alpha=0.7)
-    ax.add_patch(circle)
-    ax.text(0, 0, 'BH', color='white', ha='center', va='center', fontsize=12)
+    ax3.add_patch(circle)
+    ax3.text(0, 0, 'BH', color='white', ha='center', va='center', fontsize=12)
+    
     if a_spin <= 0.999:
         r_photon = 2 * (1 + np.cos(2/3 * np.arccos(-abs(a_spin))))
         theta_ph = np.linspace(0, 2*np.pi, 100)
-        ax.plot(r_photon * np.cos(theta_ph), r_photon * np.sin(theta_ph), 
+        ax3.plot(r_photon * np.cos(theta_ph), r_photon * np.sin(theta_ph), 
                 '#ff8888', linewidth=2, linestyle='--', label='Photon Sphere')
+    
     for impact in [6, 8, 10]:
         t = np.linspace(0, 50, 400)
         r = 12 * np.exp(-t/35) + r_horizon + 0.5
         phi = (impact/10) * np.sin(t/25)
-        ax.plot(r * np.cos(phi), r * np.sin(phi), '#88ff88', linewidth=1.5, alpha=0.7)
-    ax.set_aspect('equal')
-    ax.set_xlim(-14, 14)
-    ax.set_ylim(-14, 14)
-    ax.set_title(f'Kerr Spacetime | a/M = {a_spin:.3f}', color='#00aaff')
-    ax.legend()
-    ax.axis('off')
-    st.pyplot(fig)
-    plt.close(fig)
+        ax3.plot(r * np.cos(phi), r * np.sin(phi), '#88ff88', linewidth=1.5, alpha=0.7)
+    
+    ax3.set_aspect('equal')
+    ax3.set_xlim(-14, 14)
+    ax3.set_ylim(-14, 14)
+    ax3.set_title(f'Kerr Spacetime | a/M = {a_spin:.3f}', color='#00aaff')
+    ax3.legend()
+    ax3.axis('off')
+    
+    st.pyplot(fig3)
+    
+    # Download button for Kerr geodesic plot
+    buf3 = io.BytesIO()
+    fig3.savefig(buf3, format='png', bbox_inches='tight', facecolor='black')
+    buf3.seek(0)
+    st.download_button("📥 Download Kerr Geodesic Plot", buf3, "kerr_geodesic.png", use_container_width=True)
+    plt.close(fig3)
     st.caption(f"Event Horizon: r_+ = {r_horizon:.3f} M")
 
 st.markdown("---")
-st.markdown("⚡ **Magnetar QED Explorer v1.0** | Tony Ford Model")
+st.markdown("⚡ **Magnetar QED Explorer v1.1** | Download Plots | Tony Ford Model")
