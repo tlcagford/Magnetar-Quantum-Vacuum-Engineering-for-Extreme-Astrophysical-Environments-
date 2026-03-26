@@ -1,16 +1,15 @@
 """
-Stellaris QED Explorer v6.0 – Complete with Optical Conversion Chart
-Full integration: Photon-Dark Photon Conversion, Magnetar QED, QCIS
+Stellaris QED Explorer v5.1 – Streamplot-Free Version
+Compatible with Streamlit Cloud
 """
 
 import io
 import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle, FancyBboxPatch
-from matplotlib.colors import LinearSegmentedColormap
-from scipy.constants import c, hbar, e, m_e, alpha, pi
-from scipy.special import jv
+from matplotlib.patches import Circle
+from scipy.constants import c, hbar, e, m_e, alpha
+from scipy.ndimage import gaussian_filter
 from PIL import Image
 import warnings
 import time
@@ -18,10 +17,10 @@ import json
 
 warnings.filterwarnings('ignore')
 
-# ── PAGE CONFIG – LIGHT THEME ─────────────────────────────────────────────
+# ── PAGE CONFIG ─────────────────────────────────────────────
 st.set_page_config(
     layout="wide",
-    page_title="Stellaris QED Explorer v6.0",
+    page_title="Stellaris QED Explorer v5.1",
     page_icon="⚡",
     initial_sidebar_state="expanded"
 )
@@ -41,127 +40,7 @@ B_crit = m_e**2 * c**2 / (e * hbar)  # 4.4e13 G
 alpha_fine = 1/137.036
 
 
-# ── PHOTON-DARK PHOTON CONVERSION OPTICAL CHART (FROM YOUR PROJECT) ─────────────────────────────────────────────
-
-def photon_dark_photon_conversion_matrix(B_field, epsilon, m_dark, omega_range, L):
-    """
-    Compute full conversion matrix for photon-dark photon system
-    From: Primordial Photon-DarkPhoton Entanglement framework
-    """
-    hbar_ev_s = 6.582e-16
-    c_km_s = 3e5
-    
-    # Conversion probability
-    P_conversion = np.zeros((len(omega_range), len(L)))
-    
-    for i, omega in enumerate(omega_range):
-        for j, length in enumerate(L):
-            if m_dark > 0:
-                conversion_length = 4 * omega * hbar_ev_s * c_km_s / (m_dark**2)
-                P = (epsilon * B_field / 1e15)**2 * np.sin(np.pi * length / conversion_length)**2
-            else:
-                P = (epsilon * B_field / 1e15)**2
-            P_conversion[i, j] = np.clip(P, 0, 1)
-    
-    return P_conversion
-
-
-def plot_optical_conversion_chart(B_field, epsilon, m_dark):
-    """
-    Optical chart showing photon-dark photon conversion probability
-    as function of photon energy and propagation length
-    """
-    # Energy range (eV) – optical to X-ray
-    energy_eV = np.logspace(0, 4, 100)  # 1 eV to 10 keV
-    omega = energy_eV / hbar  # angular frequency
-    
-    # Length range (km)
-    L = np.logspace(-2, 2, 100)  # 0.01 km to 100 km
-    
-    # Compute conversion matrix
-    P_matrix = photon_dark_photon_conversion_matrix(B_field, epsilon, m_dark, omega, L)
-    
-    # Create figure
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6), facecolor='white')
-    
-    # 2D colormap
-    im = ax1.pcolormesh(L, energy_eV, P_matrix, 
-                        shading='nearest', cmap='plasma', norm='log')
-    ax1.set_xscale('log')
-    ax1.set_yscale('log')
-    ax1.set_xlabel('Propagation Length (km)', fontsize=11)
-    ax1.set_ylabel('Photon Energy (eV)', fontsize=11)
-    ax1.set_title(f'γ ↔ A\' Conversion Probability\nB = {B_field:.1e} G, ε = {epsilon:.1e}, m_A\' = {m_dark:.1e} eV', 
-                  fontsize=12)
-    plt.colorbar(im, ax=ax1, label='Conversion Probability')
-    
-    # Overlay optical range
-    ax1.axhspan(1.8, 3.1, alpha=0.3, color='green', label='Visible Range')
-    ax1.axhspan(0.1, 10, alpha=0.2, color='yellow', label='Optical/X-ray')
-    ax1.legend()
-    
-    # Maximum conversion probability vs energy
-    P_max_vs_energy = np.max(P_matrix, axis=1)
-    ax2.semilogx(energy_eV, P_max_vs_energy, 'b-', linewidth=2)
-    ax2.axvspan(1.8, 3.1, alpha=0.3, color='green', label='Visible Range')
-    ax2.set_xlabel('Photon Energy (eV)', fontsize=11)
-    ax2.set_ylabel('Max Conversion Probability', fontsize=11)
-    ax2.set_title('Peak Conversion Probability by Photon Energy', fontsize=12)
-    ax2.grid(True, alpha=0.3)
-    ax2.legend()
-    
-    fig.tight_layout()
-    return fig
-
-
-def plot_dark_photon_spectrum(B_field, epsilon, m_dark):
-    """
-    Dark photon spectrum produced from conversion
-    """
-    fig, ax = plt.subplots(figsize=(10, 6), facecolor='white')
-    ax.set_facecolor('#f8f9fa')
-    
-    # Energy range
-    energy_eV = np.logspace(0, 4, 500)
-    omega = energy_eV / hbar
-    
-    # Length for maximum conversion
-    hbar_ev_s = 6.582e-16
-    c_km_s = 3e5
-    if m_dark > 0:
-        L_opt = 4 * 1e18 * hbar_ev_s * c_km_s / (m_dark**2) / 2
-    else:
-        L_opt = 10
-    
-    P = np.zeros_like(energy_eV)
-    for i, omega_val in enumerate(omega):
-        if m_dark > 0:
-            conversion_length = 4 * omega_val * hbar_ev_s * c_km_s / (m_dark**2)
-            P[i] = (epsilon * B_field / 1e15)**2 * np.sin(np.pi * L_opt / conversion_length)**2
-        else:
-            P[i] = (epsilon * B_field / 1e15)**2
-        P[i] = np.clip(P[i], 0, 1)
-    
-    # Dark photon flux (arbitrary normalization)
-    dark_photon_flux = P * (energy_eV)**(-2)  # Simple power law spectrum
-    
-    ax.loglog(energy_eV, dark_photon_flux, 'r-', linewidth=2, label='Dark Photon Flux')
-    ax.loglog(energy_eV, P, 'b--', linewidth=1.5, alpha=0.7, label='Conversion Probability')
-    
-    # Mark optical range
-    ax.axvspan(1.8, 3.1, alpha=0.3, color='green', label='Visible Range')
-    
-    ax.set_xlabel('Photon Energy (eV)', fontsize=11)
-    ax.set_ylabel('Relative Flux / Probability', fontsize=11)
-    ax.set_title(f'Dark Photon Spectrum from Conversion\nB = {B_field:.1e} G, ε = {epsilon:.1e}, m_A\' = {m_dark:.1e} eV',
-                 fontsize=12)
-    ax.grid(True, alpha=0.3)
-    ax.legend()
-    
-    return fig
-
-
-# ── MAGNETAR PHYSICS FUNCTIONS ─────────────────────────────────────────────
+# ── PHYSICS FUNCTIONS ─────────────────────────────────────────────
 
 def magnetar_dipole_field(B_surface, R_ns, r, theta, inclination=0):
     """Magnetar dipole field"""
@@ -174,7 +53,7 @@ def magnetar_dipole_field(B_surface, R_ns, r, theta, inclination=0):
 
 
 def euler_heisenberg_n(B_over_Bc):
-    """Euler-Heisenberg refractive index"""
+    """Euler-Heisenberg refractive index shift"""
     x = B_over_Bc**2
     return 4 * alpha_fine/(45 * np.pi) * x
 
@@ -187,7 +66,7 @@ def dark_photon_conversion(B, L, epsilon, m_dark, omega=1e18):
     c_km_s = 3e5
     conversion_length = 4 * omega * hbar_ev_s * c_km_s / (m_dark**2)
     P = (epsilon * B / 1e15)**2 * np.sin(np.pi * L / conversion_length)**2
-    return np.clip(P, 0, 1)
+    return np.clip(P, 0, 1), conversion_length
 
 
 def schwinger_pair_production(B_field):
@@ -198,38 +77,49 @@ def schwinger_pair_production(B_field):
     return np.clip(rate, 0, 1)
 
 
-# ── PLOTTING FUNCTIONS ─────────────────────────────────────────────
+# ── RELIABLE PLOTTING (NO STREAMPLOT) ─────────────────────────────────────────────
 
 def plot_magnetar_field(B_surface, R_ns, inclination):
-    """Magnetar field using quiver"""
+    """Magnetar field using quiver only (reliable)"""
     resolution = 40
+    
+    # Create grid
     r = np.linspace(R_ns, 5*R_ns, resolution)
     theta = np.linspace(0, np.pi, resolution)
     R, Theta = np.meshgrid(r, theta, indexing='ij')
     
+    # Calculate field
     B_r, B_theta, B_mag = magnetar_dipole_field(B_surface, R_ns, R, Theta, inclination)
     
+    # Convert to Cartesian
     X = R * np.sin(Theta)
     Y = R * np.cos(Theta)
     U = B_r * np.sin(Theta) + B_theta * np.cos(Theta)
     V = B_r * np.cos(Theta) - B_theta * np.sin(Theta)
     
+    # Normalize for visualization
     magnitude = np.sqrt(U**2 + V**2)
     U_norm = U / (magnitude + 1e-9)
     V_norm = V / (magnitude + 1e-9)
+    
     logB = np.log10(B_mag + 1e-9)
     
+    # Create figure
     fig, ax = plt.subplots(figsize=(8, 8), facecolor='white')
     ax.set_facecolor('#f8f9fa')
     
+    # Use quiver (reliable, no streamplot)
     skip = 2
-    ax.quiver(X[::skip, ::skip], Y[::skip, ::skip], 
-              U_norm[::skip, ::skip], V_norm[::skip, ::skip],
-              logB[::skip, ::skip], cmap='plasma', scale=25, width=0.008, alpha=0.8)
+    q = ax.quiver(X[::skip, ::skip], Y[::skip, ::skip], 
+                  U_norm[::skip, ::skip], V_norm[::skip, ::skip],
+                  logB[::skip, ::skip],
+                  cmap='plasma', scale=25, width=0.008, alpha=0.8)
     
+    # Add neutron star
     ax.add_patch(Circle((0, 0), R_ns, color='#d62728', alpha=0.9))
     ax.text(0, 0, 'NS', color='white', ha='center', va='center', fontsize=12, fontweight='bold')
     
+    # Add field lines manually
     for angle in np.linspace(0, 2*np.pi, 12):
         t = np.linspace(0, 1, 50)
         r_line = R_ns * (1 + t * 3.5)
@@ -244,7 +134,9 @@ def plot_magnetar_field(B_surface, R_ns, inclination):
     ax.set_xlabel('x (km)')
     ax.set_ylabel('y (km)')
     ax.set_title(f'Magnetar Dipole Field | B_surface = {B_surface:.1e} G | Inclination = {inclination}°')
-    plt.colorbar(ax.collections[0], ax=ax, label='log₁₀(|B|) [G]')
+    
+    cbar = plt.colorbar(q, ax=ax, label='log₁₀(|B|) [G]')
+    cbar.ax.tick_params()
     
     return fig
 
@@ -255,6 +147,7 @@ def plot_qed_vacuum(B_ratio):
     
     B_range = np.logspace(-1, min(3, np.log10(max(2, B_ratio*2))), 100)
     x = B_range**2
+    
     delta_n = 4 * alpha_fine/(45 * np.pi) * x
     delta_n_para = 7 * alpha_fine/(45 * np.pi) * x
     
@@ -280,6 +173,27 @@ def plot_qed_vacuum(B_ratio):
     return fig
 
 
+def plot_dark_photon_conversion(B, epsilon, m_dark):
+    """Dark photon conversion plot"""
+    fig, ax = plt.subplots(figsize=(8, 6), facecolor='white')
+    ax.set_facecolor('#f8f9fa')
+    
+    L = np.logspace(-2, 2, 1000)
+    P, conv_len = dark_photon_conversion(B, L, epsilon, m_dark)
+    
+    ax.semilogx(L, P, 'b-', linewidth=2)
+    ax.axhline(y=(epsilon * B / 1e15)**2, color='r', linestyle='--', alpha=0.7, 
+               label=f'Max P = {(epsilon * B / 1e15)**2:.2e}')
+    ax.set_xlabel('Propagation Length (km)')
+    ax.set_ylabel('Conversion Probability')
+    ax.set_title(f'γ ↔ A\' Conversion | B = {B:.1e} G, ε = {epsilon:.1e}, m_A\' = {m_dark:.1e} eV')
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim(0, 1)
+    ax.legend()
+    
+    return fig
+
+
 def plot_kerr_geodesic(a_spin):
     """Kerr geodesic plot"""
     fig, ax = plt.subplots(figsize=(8, 8), facecolor='white')
@@ -290,12 +204,14 @@ def plot_kerr_geodesic(a_spin):
     ax.add_patch(circle)
     ax.text(0, 0, 'BH', color='black', ha='center', va='center', fontsize=10)
     
+    # Photon sphere
     if a_spin <= 0.999:
         r_photon = 2 * (1 + np.cos(2/3 * np.arccos(-abs(a_spin))))
         theta = np.linspace(0, 2*np.pi, 100)
         ax.plot(r_photon * np.cos(theta), r_photon * np.sin(theta), 
                 'r--', linewidth=2, label='Photon Sphere', alpha=0.7)
     
+    # Sample geodesics
     for impact in [6, 8, 10, 12]:
         t = np.linspace(0, 50, 500)
         r = 12 * np.exp(-t/35) + r_horizon + 0.5
@@ -318,8 +234,8 @@ def plot_kerr_geodesic(a_spin):
 
 # ── SIDEBAR ─────────────────────────────────────────────
 with st.sidebar:
-    st.title("⚡ Stellaris QED v6.0")
-    st.markdown("*Complete with Optical Conversion Chart*")
+    st.title("⚡ Stellaris QED v5.1")
+    st.markdown("*Streamplot-Free Version*")
     st.markdown("---")
     
     st.markdown("### 🌌 Magnetar Parameters")
@@ -338,14 +254,13 @@ with st.sidebar:
     st.latex(r"B_{\text{crit}} = \frac{m_e^2 c^2}{e\hbar} = 4.4\times10^{13}\text{ G}")
     st.latex(r"n = 1 + \frac{\alpha}{45\pi}\left(\frac{B}{B_c}\right)^2")
     st.latex(r"P_{\gamma\to A'} = \left(\frac{\varepsilon B}{m_{A'}}\right)^2\sin^2\left(\frac{m_{A'}^2 L}{4\omega}\right)")
-    st.latex(r"\mathcal{L}_{\text{mix}} = \frac{\varepsilon}{2} F_{\mu\nu} F'^{\mu\nu}")
     
-    st.caption("Tony Ford Model | Primordial Photon-DarkPhoton Entanglement | v6.0")
+    st.caption("Tony Ford Model | v5.1")
 
 
 # ── MAIN APP ─────────────────────────────────────────────
 st.title("⚡ Stellaris QED Explorer")
-st.markdown("*Complete Integration: Photon-Dark Photon Conversion + Magnetar QED + QCIS*")
+st.markdown("*Quantum Vacuum Engineering for Extreme Astrophysical Environments*")
 st.markdown("---")
 
 # Metrics
@@ -366,81 +281,13 @@ with col4:
 if B_ratio > 1:
     st.warning(f"⚠️ **Super-critical field!** B/B_crit = {B_ratio:.2e} | Schwinger pair production and vacuum birefringence are significant.")
 
-# Tabs – NEW: Optical Conversion Chart as first tab
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "🔆 Optical Conversion Chart",
-    "🌌 Magnetar Field", 
-    "⚛️ QED Vacuum", 
-    "🕳️ Dark Photons", 
-    "🌀 Kerr Geodesics",
-    "🔬 QCIS Integration"
+# Tabs
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🌌 Magnetar Field", "⚛️ QED Vacuum", "🕳️ Dark Photons", "🌀 Kerr Geodesics"
 ])
 
-# Tab 1: Optical Conversion Chart (NEW - from your project)
+# Tab 1
 with tab1:
-    st.header("Photon ↔ Dark Photon Conversion")
-    st.markdown("*From Primordial Photon-DarkPhoton Entanglement Framework*")
-    
-    col_a, col_b = st.columns([1, 1])
-    with col_a:
-        st.info(f"""
-        **Conversion Parameters**
-        - Magnetic Field: B = {B_surface:.1e} G
-        - Kinetic Mixing: ε = {epsilon:.1e}
-        - Dark Photon Mass: m_A' = {m_dark:.1e} eV
-        - Critical Field: B_crit = {B_crit:.1e} G
-        
-        **Optical Range** (shaded green)
-        - Visible light: 1.8 - 3.1 eV (400-700 nm)
-        - X-ray: > 100 eV
-        - Gamma-ray: > 100 keV
-        
-        **Physics**: γ ↔ A' oscillations in external B field
-        """)
-        
-        # Show optical range conversion
-        optical_energy = 2.5  # eV (visible)
-        hbar_ev_s = 6.582e-16
-        c_km_s = 3e5
-        omega_opt = optical_energy / hbar_ev_s
-        
-        if m_dark > 0:
-            conversion_length = 4 * omega_opt * hbar_ev_s * c_km_s / (m_dark**2)
-            P_opt = (epsilon * B_surface / 1e15)**2 * np.sin(np.pi * 10 / conversion_length)**2
-        else:
-            P_opt = (epsilon * B_surface / 1e15)**2
-        
-        st.metric("Visible Light Conversion", f"{P_opt:.2e}", 
-                  delta="Detectable" if P_opt > 1e-6 else "Below threshold")
-    
-    with col_b:
-        with st.spinner("Generating optical conversion chart..."):
-            fig = plot_optical_conversion_chart(B_surface, epsilon, m_dark)
-            st.pyplot(fig)
-            plt.close(fig)
-    
-    # Second row: Dark photon spectrum
-    st.markdown("---")
-    st.subheader("Dark Photon Spectrum")
-    
-    col_c, col_d = st.columns([1, 1])
-    with col_c:
-        st.markdown("""
-        **Dark Photon Production**
-        - Conversion produces dark photons with same energy as parent photons
-        - Spectrum follows source photon distribution × conversion probability
-        - Peaks at energies where conversion is coherent
-        - Can be detected via reconversion to photons in B field
-        """)
-    
-    with col_d:
-        with st.spinner("Computing dark photon spectrum..."):
-            fig = plot_dark_photon_spectrum(B_surface, epsilon, m_dark)
-            st.pyplot(fig)
-            plt.close(fig)
-
-# Tab 2: Magnetar Field
-with tab2:
     st.header("Magnetar Magnetic Field")
     
     col_a, col_b = st.columns([1, 2])
@@ -463,8 +310,8 @@ with tab2:
             st.pyplot(fig)
             plt.close(fig)
 
-# Tab 3: QED Vacuum
-with tab3:
+# Tab 2
+with tab2:
     st.header("Euler-Heisenberg QED Vacuum")
     
     col_a, col_b = st.columns(2)
@@ -483,9 +330,9 @@ with tab3:
             st.pyplot(fig)
             plt.close(fig)
 
-# Tab 4: Dark Photons
-with tab4:
-    st.header("Dark Photon Conversion Details")
+# Tab 3
+with tab3:
+    st.header("Photon ↔ Dark Photon Conversion")
     
     col_a, col_b = st.columns(2)
     with col_a:
@@ -495,28 +342,16 @@ with tab4:
         - Kinetic mixing ε = {epsilon:.1e}
         - Dark photon mass m' = {m_dark:.1e} eV
         - Maximum conversion probability: {max_P:.2e}
-        
-        **Coherence Length**
-        - L_coherent = 4πω/m'²
-        - For optical light: L_coherent ≈ {4 * np.pi * 2.5 / (m_dark**2 + 1e-20):.2e} km
         """)
     
     with col_b:
         with st.spinner("Rendering dark photon conversion..."):
-            L_sample = np.logspace(-2, 2, 1000)
-            P_sample = dark_photon_conversion(B_surface, L_sample, epsilon, m_dark)
-            fig, ax = plt.subplots(figsize=(8, 5), facecolor='white')
-            ax.semilogx(L_sample, P_sample, 'b-', linewidth=2)
-            ax.set_xlabel('Propagation Length (km)')
-            ax.set_ylabel('Conversion Probability')
-            ax.set_title(f'γ ↔ A\' Conversion | m_A\' = {m_dark:.1e} eV')
-            ax.grid(True, alpha=0.3)
-            ax.set_ylim(0, 1)
+            fig = plot_dark_photon_conversion(B_surface, epsilon, m_dark)
             st.pyplot(fig)
             plt.close(fig)
 
-# Tab 5: Kerr Geodesics
-with tab5:
+# Tab 4
+with tab4:
     st.header("Null Geodesics in Kerr Spacetime")
     
     col_a, col_b = st.columns(2)
@@ -539,50 +374,5 @@ with tab5:
             st.pyplot(fig)
             plt.close(fig)
 
-# Tab 6: QCIS Integration
-with tab6:
-    st.header("Quantum Cosmology Integration Suite")
-    st.markdown("*Quantum-corrected power spectra and entanglement entropy*")
-    
-    # FDM Soliton
-    r = np.linspace(0, 5, 100)
-    soliton = np.sin(np.pi * r) / (np.pi * r + 1e-9)
-    soliton = soliton**2
-    
-    col_a, col_b = st.columns(2)
-    
-    with col_a:
-        fig, ax = plt.subplots(figsize=(6, 4), facecolor='white')
-        ax.plot(r, soliton, 'b-', linewidth=2)
-        ax.set_xlabel('r / r_s')
-        ax.set_ylabel('ρ(r) / ρ₀')
-        ax.set_title('FDM Soliton Profile\n[sin(kr)/(kr)]²')
-        ax.grid(True, alpha=0.3)
-        ax.set_facecolor('#f8f9fa')
-        st.pyplot(fig)
-        plt.close(fig)
-    
-    with col_b:
-        # Power spectrum
-        k = np.logspace(-3, 0, 100)
-        A_s = 2.1e-9
-        n_s = 0.965
-        k0 = 0.05
-        P_lcdm = A_s * (k / k0)**(n_s - 1)
-        quantum_corr = 1 + 1.0 * (k / k0)**0.8
-        
-        fig, ax = plt.subplots(figsize=(6, 4), facecolor='white')
-        ax.loglog(k, P_lcdm / quantum_corr, 'b-', linewidth=2, label='ΛCDM')
-        ax.loglog(k, P_lcdm, 'r-', linewidth=2, label='Quantum-corrected')
-        ax.fill_between(k, P_lcdm / quantum_corr, P_lcdm, alpha=0.3, color='red')
-        ax.set_xlabel('k (Mpc⁻¹)')
-        ax.set_ylabel('P(k)')
-        ax.set_title('Quantum-Corrected Power Spectrum')
-        ax.grid(True, alpha=0.3)
-        ax.legend()
-        ax.set_facecolor('#f8f9fa')
-        st.pyplot(fig)
-        plt.close(fig)
-
 st.markdown("---")
-st.markdown("⚡ **Stellaris QED Explorer v6.0** | Complete with Optical Conversion Chart | Tony Ford Model")
+st.markdown("⚡ **Stellaris QED Explorer v5.1** | No Streamplot | Light Theme | Tony Ford Model")
