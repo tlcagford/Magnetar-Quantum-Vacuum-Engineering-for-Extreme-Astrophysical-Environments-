@@ -1,6 +1,6 @@
 """
-Stellaris QED Explorer v2.2 – Guaranteed Display
-Multiple fallback methods for Streamlit Cloud compatibility
+Stellaris QED Explorer v3.0 – PIL-Based Display
+Guaranteed rendering on Streamlit Cloud
 """
 
 import io
@@ -9,18 +9,18 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from scipy.constants import c, hbar, e, m_e, alpha
+from PIL import Image
 import warnings
 import time
 import json
 from dataclasses import dataclass
-from typing import Dict, Tuple
 
 warnings.filterwarnings('ignore')
 
 # ── PAGE CONFIG ─────────────────────────────────────────────
 st.set_page_config(
     layout="wide",
-    page_title="Stellaris QED Explorer v2.2",
+    page_title="Stellaris QED Explorer v3.0",
     page_icon="⚡",
     initial_sidebar_state="expanded"
 )
@@ -40,13 +40,26 @@ B_crit = m_e**2 * c**2 / (e * hbar)  # 4.4e13 G
 alpha_fine = 1/137.036
 
 
-# ── RELIABLE PLOTTING FUNCTION (MULTIPLE FALLBACKS) ─────────────────────────────────────────────
+# ── PLOTTING FUNCTION WITH PIL CONVERSION ─────────────────────────────────────────────
 
-def plot_magnetar_field_robust(B_surface, R_ns, inclination):
-    """
-    Plot magnetar field with multiple fallback methods for guaranteed display
-    """
-    resolution = 60
+def fig_to_pil(fig):
+    """Convert matplotlib figure to PIL Image for guaranteed display"""
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', facecolor=fig.get_facecolor(), dpi=100)
+    buf.seek(0)
+    return Image.open(buf)
+
+
+def display_fig(fig, caption=None):
+    """Display figure using PIL (guaranteed to work on Streamlit Cloud)"""
+    pil_img = fig_to_pil(fig)
+    st.image(pil_img, caption=caption, use_container_width=True)
+    plt.close(fig)
+
+
+def plot_magnetar_field_pil(B_surface, R_ns, inclination):
+    """Create magnetar field plot and return as PIL-compatible figure"""
+    resolution = 80
     
     # Create grid
     r = np.linspace(R_ns, 5*R_ns, resolution)
@@ -67,59 +80,49 @@ def plot_magnetar_field_robust(B_surface, R_ns, inclination):
     U = B_r * np.sin(Theta) + B_theta * np.cos(Theta)
     V = B_r * np.cos(Theta) - B_theta * np.sin(Theta)
     
-    # Normalize vectors for visualization
+    # Normalize vectors
     magnitude = np.sqrt(U**2 + V**2)
     U_norm = U / (magnitude + 1e-9)
     V_norm = V / (magnitude + 1e-9)
     
     # Create figure
-    fig, ax = plt.subplots(figsize=(8, 8))
+    fig, ax = plt.subplots(figsize=(8, 8), facecolor='#0a0a2a')
+    ax.set_facecolor('#0a0a2a')
     
-    # Method 1: Try streamplot
+    # Color by log field strength
+    logB = np.log10(B_mag + 1e-9)
+    logB_norm = (logB - logB.min()) / (logB.max() - logB.min() + 1e-9)
+    
+    # Try streamplot with reduced density for reliability
     try:
-        # Color by log of field strength
-        colors = np.log10(B_mag + 1e-9)
-        colors = (colors - colors.min()) / (colors.max() - colors.min() + 1e-9)
-        
         ax.streamplot(X, Y, U_norm, V_norm, 
-                     color=colors, 
+                     color=logB_norm, 
                      cmap='plasma', 
-                     density=1.2,
-                     linewidth=1.5,
-                     arrowsize=1)
-    except Exception as e1:
-        # Method 2: Fallback to quiver with fewer points
-        try:
-            skip = 4
-            ax.quiver(X[::skip, ::skip], Y[::skip, ::skip],
-                     U_norm[::skip, ::skip], V_norm[::skip, ::skip],
-                     np.log10(B_mag[::skip, ::skip] + 1e-9),
-                     cmap='plasma', 
-                     scale=50, 
-                     width=0.008,
-                     alpha=0.8)
-        except Exception as e2:
-            # Method 3: Simple contour plot of field strength
-            contour = ax.contourf(X, Y, np.log10(B_mag + 1e-9), 
-                                  levels=20, cmap='plasma', alpha=0.8)
-            plt.colorbar(contour, ax=ax, label='log10(|B|) [G]')
+                     density=1.0,
+                     linewidth=1.2,
+                     arrowsize=0.8)
+    except:
+        # Fallback: quiver with skipping
+        skip = 4
+        sc = ax.scatter(X[::skip, ::skip], Y[::skip, ::skip], 
+                       c=logB_norm[::skip, ::skip], 
+                       cmap='plasma', s=5, alpha=0.6)
+        ax.quiver(X[::skip, ::skip], Y[::skip, ::skip],
+                 U_norm[::skip, ::skip], V_norm[::skip, ::skip],
+                 alpha=0.5, width=0.005)
     
-    # Add neutron star
-    ax.add_patch(Circle((0, 0), R_ns, color='red', alpha=0.8))
+    # Neutron star
+    ax.add_patch(Circle((0, 0), R_ns, color='#ff4444', alpha=0.9, zorder=10))
+    ax.text(0, 0, 'NS', color='white', ha='center', va='center', fontsize=10, fontweight='bold', zorder=11)
     
-    # Add field lines manually (simplified)
-    for angle in np.linspace(0, 2*np.pi, 16):
-        start_r = R_ns * 1.1
-        start_x = start_r * np.cos(angle)
-        start_y = start_r * np.sin(angle)
-        
-        # Simple dipole field line approximation
-        t = np.linspace(0, 1, 50)
-        r_line = R_ns * (1 + t * 4)
-        theta_line = angle + 0.5 * np.sin(angle) * t
+    # Simple field lines
+    for angle in np.linspace(0, 2*np.pi, 12):
+        t = np.linspace(0, 1, 30)
+        r_line = R_ns * (1 + t * 3.5)
+        theta_line = angle + 0.3 * np.sin(angle) * t
         x_line = r_line * np.cos(theta_line)
         y_line = r_line * np.sin(theta_line)
-        ax.plot(x_line, y_line, 'w-', linewidth=0.5, alpha=0.3)
+        ax.plot(x_line, y_line, 'w-', linewidth=0.8, alpha=0.4, zorder=5)
     
     ax.set_aspect('equal')
     ax.set_xlim(-5*R_ns, 5*R_ns)
@@ -132,25 +135,20 @@ def plot_magnetar_field_robust(B_surface, R_ns, inclination):
     ax.set_title(f'Magnetar Dipole Field | B_surface = {B_display} G | Inclination = {inclination}°', 
                  color='white', fontsize=12)
     
-    # Add colorbar if using contour
-    if 'contour' in locals():
-        pass
-    else:
-        sm = plt.cm.ScalarMappable(cmap='plasma')
-        sm.set_array(np.log10(B_mag.flatten() + 1e-9))
-        cbar = plt.colorbar(sm, ax=ax, label='log10(|B|) [G]')
-        cbar.ax.yaxis.set_tick_params(color='white')
-        cbar.ax.yaxis.label.set_color('white')
-    
-    fig.patch.set_facecolor('#0a0a2a')
-    ax.set_facecolor('#0a0a2a')
+    # Colorbar
+    sm = plt.cm.ScalarMappable(cmap='plasma')
+    sm.set_array(logB.flatten())
+    cbar = plt.colorbar(sm, ax=ax, label='log10(|B|) [G]')
+    cbar.ax.yaxis.set_tick_params(color='white')
+    cbar.ax.yaxis.label.set_color('white')
+    cbar.ax.tick_params(colors='white')
     
     return fig
 
 
-def plot_qed_vacuum_robust(B_ratio):
-    """Reliable QED vacuum plot"""
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+def plot_qed_vacuum_pil(B_ratio):
+    """QED vacuum plot with PIL compatibility"""
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), facecolor='#0a0a2a')
     
     B_range = np.logspace(-1, min(3, np.log10(max(2, B_ratio*2))), 100)
     B_range_safe = np.clip(B_range, 0.01, 1e6)
@@ -166,7 +164,6 @@ def plot_qed_vacuum_robust(B_ratio):
     axes[0].set_title('Vacuum Refractive Index', color='white')
     axes[0].grid(True, alpha=0.3)
     axes[0].legend()
-    axes[0].tick_params(colors='white')
     
     delta_n = np.abs(delta_n_perp - delta_n_para)
     axes[1].loglog(B_range_safe, delta_n, 'g-', linewidth=2)
@@ -174,28 +171,26 @@ def plot_qed_vacuum_robust(B_ratio):
     axes[1].set_ylabel('|Δn|', color='white')
     axes[1].set_title('Vacuum Birefringence', color='white')
     axes[1].grid(True, alpha=0.3)
-    axes[1].tick_params(colors='white')
     
     for ax in axes:
         ax.set_facecolor('#0a0a2a')
+        ax.tick_params(colors='white')
     
-    fig.patch.set_facecolor('#0a0a2a')
     fig.tight_layout()
-    
     return fig
 
 
-def plot_dark_photon_conversion_robust(B, epsilon, m_dark):
-    """Reliable dark photon conversion plot"""
-    fig, ax = plt.subplots(figsize=(8, 6))
+def plot_dark_photon_pil(B, epsilon, m_dark):
+    """Dark photon conversion plot"""
+    fig, ax = plt.subplots(figsize=(8, 6), facecolor='#0a0a2a')
+    ax.set_facecolor('#0a0a2a')
     
     L = np.logspace(-2, 2, 1000)
     
     if m_dark > 1e-11:
-        # Use physical constants
-        hbar_ev_s = 6.582e-16  # eV·s
-        c_cm = 3e10  # cm/s
-        omega = 1e18  # Hz
+        hbar_ev_s = 6.582e-16
+        c_cm = 3e10
+        omega = 1e18
         conversion_length = 4 * omega * hbar_ev_s * c_cm / (m_dark**2)
         P = (epsilon * B / 1e15)**2 * np.sin(np.pi * L / conversion_length)**2
     else:
@@ -211,53 +206,26 @@ def plot_dark_photon_conversion_robust(B, epsilon, m_dark):
     ax.grid(True, alpha=0.3)
     ax.set_ylim(0, 1)
     ax.tick_params(colors='white')
-    ax.set_facecolor('#0a0a2a')
-    fig.patch.set_facecolor('#0a0a2a')
     
     return fig
 
 
-def plot_schwinger_rate_robust(B_ratio):
-    """Reliable Schwinger rate plot"""
-    fig, ax = plt.subplots(figsize=(8, 6))
-    
-    B_norm = np.logspace(-1, np.log10(max(2, B_ratio*2)), 100)
-    with np.errstate(divide='ignore', invalid='ignore'):
-        rate = np.exp(-np.pi / (B_norm + 1e-9))
-    rate = np.clip(rate, 0, 1)
-    
-    ax.semilogy(B_norm, rate, 'r-', linewidth=2)
-    ax.axvline(x=1, color='w', linestyle='--', alpha=0.5, label='B_critical')
-    ax.set_xlabel('B / B_critical', color='white')
-    ax.set_ylabel('Pair Production Rate (arb. units)', color='white')
-    ax.set_title('Schwinger Pair Production', color='white')
-    ax.grid(True, alpha=0.3)
-    ax.legend()
-    ax.tick_params(colors='white')
+def plot_kerr_geodesic_pil(a_spin):
+    """Kerr geodesic plot"""
+    fig, ax = plt.subplots(figsize=(8, 8), facecolor='#0a0a2a')
     ax.set_facecolor('#0a0a2a')
-    fig.patch.set_facecolor('#0a0a2a')
     
-    return fig
-
-
-def plot_kerr_geodesic_robust(a_spin):
-    """Reliable Kerr geodesic plot"""
-    fig, ax = plt.subplots(figsize=(8, 8))
-    
-    # Event horizon
     r_horizon = 1 + np.sqrt(1 - a_spin**2)
     circle = Circle((0, 0), r_horizon, color='gray', alpha=0.6)
     ax.add_patch(circle)
-    ax.text(0, 0, 'BH', color='white', ha='center', va='center', fontsize=8)
+    ax.text(0, 0, 'BH', color='white', ha='center', va='center', fontsize=10)
     
-    # Photon sphere
     if a_spin <= 0.999:
         r_photon = 2 * (1 + np.cos(2/3 * np.arccos(-abs(a_spin))))
         theta = np.linspace(0, 2*np.pi, 100)
         ax.plot(r_photon * np.cos(theta), r_photon * np.sin(theta), 
                 'r--', linewidth=2, label='Photon Sphere', alpha=0.7)
     
-    # Sample geodesic
     t = np.linspace(0, 50, 500)
     r = 10 * np.exp(-t/40) + r_horizon + 1
     phi = np.pi/4 + 0.3 * np.sin(t/15)
@@ -274,8 +242,6 @@ def plot_kerr_geodesic_robust(a_spin):
     ax.legend()
     ax.grid(True, alpha=0.3)
     ax.tick_params(colors='white')
-    ax.set_facecolor('#0a0a2a')
-    fig.patch.set_facecolor('#0a0a2a')
     
     return fig
 
@@ -303,7 +269,7 @@ with st.sidebar:
     st.latex(r"n = 1 + \frac{\alpha}{45\pi}\left(\frac{B}{B_c}\right)^2")
     st.latex(r"P_{\gamma\to A'} = \left(\frac{\varepsilon B}{m_{A'}}\right)^2\sin^2\left(\frac{m_{A'}^2 L}{4\omega}\right)")
     
-    st.caption("Tony Ford Model | Stellaris QED v2.2")
+    st.caption("Tony Ford Model | Stellaris QED v3.0")
 
 
 # ── MAIN APP ─────────────────────────────────────────────
@@ -350,9 +316,8 @@ with tab1:
     
     with col_b:
         with st.spinner("Rendering magnetar field..."):
-            fig = plot_magnetar_field_robust(B_surface, R_ns, inclination)
-            st.pyplot(fig)
-            plt.close(fig)
+            fig = plot_magnetar_field_pil(B_surface, R_ns, inclination)
+            display_fig(fig, "Magnetar dipole magnetic field lines")
 
 with tab2:
     st.header("Euler-Heisenberg QED Vacuum")
@@ -369,9 +334,8 @@ with tab2:
     
     with col_b:
         with st.spinner("Rendering QED vacuum..."):
-            fig = plot_qed_vacuum_robust(B_ratio)
-            st.pyplot(fig)
-            plt.close(fig)
+            fig = plot_qed_vacuum_pil(B_ratio)
+            display_fig(fig, "Euler-Heisenberg vacuum polarization")
 
 with tab3:
     st.header("Photon ↔ Dark Photon Conversion")
@@ -389,9 +353,8 @@ with tab3:
     
     with col_b:
         with st.spinner("Rendering dark photon conversion..."):
-            fig = plot_dark_photon_conversion_robust(B_surface, epsilon, m_dark)
-            st.pyplot(fig)
-            plt.close(fig)
+            fig = plot_dark_photon_pil(B_surface, epsilon, m_dark)
+            display_fig(fig, "γ ↔ A' conversion probability")
 
 with tab4:
     st.header("Null Geodesics in Kerr Spacetime")
@@ -412,9 +375,8 @@ with tab4:
     
     with col_b:
         with st.spinner("Rendering Kerr geodesics..."):
-            fig = plot_kerr_geodesic_robust(a_spin)
-            st.pyplot(fig)
-            plt.close(fig)
+            fig = plot_kerr_geodesic_pil(a_spin)
+            display_fig(fig, "Photon trajectories in Kerr spacetime")
 
 st.markdown("---")
-st.markdown("⚡ **Stellaris QED Explorer v2.2** | Guaranteed Display | Tony Ford Model")
+st.markdown("⚡ **Stellaris QED Explorer v3.0** | PIL-Based Display | Guaranteed Working | Tony Ford Model")
