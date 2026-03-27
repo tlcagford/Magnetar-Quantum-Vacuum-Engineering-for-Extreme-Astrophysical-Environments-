@@ -11,7 +11,7 @@ A collection of four interconnected open‑source projects that explore the quan
 
 The application is deployed on Streamlit Cloud:
 
-Live App test now: https://w7xsyujq7jzxrftum8xzcj.streamlit.app/
+Live App test now: https://qcuas-quantum-cosmology-astrophysics-unified-suite.streamlit.app/
 
 - **QCI AstroEntangle Refiner** – FDM soliton physics & image processing  
 - **Magnetar QED Explorer** – Magnetar fields, dark photons & vacuum QED  
